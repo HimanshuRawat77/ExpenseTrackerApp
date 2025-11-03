@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import { View, StyleSheet, TouchableOpacity } from "react-native";
+import { View, StyleSheet, TouchableOpacity, Alert } from "react-native";
 import { Button, Text, TextInput, Menu, useTheme } from "react-native-paper";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const SignUpScreen = ({ navigation, onSignUp }) => {
   const [name, setName] = useState("");
@@ -13,10 +14,47 @@ const SignUpScreen = ({ navigation, onSignUp }) => {
 
   const theme = useTheme();
 
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const passwordRegex =
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+
   const handleSignUpPress = async () => {
+    if (!name.trim() || !email.trim() || !password.trim() || !budget.trim()) {
+      Alert.alert("Error", "Please fill all the fields.");
+      return;
+    }
+
+    if (!emailRegex.test(email)) {
+      Alert.alert("Invalid Email", "Please enter a valid email address.");
+      return;
+    }
+
+    if (!passwordRegex.test(password)) {
+      Alert.alert(
+        "Weak Password",
+        "Password must be at least 8 characters long, include one uppercase, one lowercase, one number, and one special character."
+      );
+      return;
+    }
+
     setLoading(true);
-    await onSignUp(name, email, password, currency, budget);
-    setLoading(false);
+
+    try {
+      const userData = { name, email, password, currency, budget };
+      await AsyncStorage.setItem("userData", JSON.stringify(userData));
+
+      if (onSignUp) {
+        await onSignUp(name, email, password, currency, budget);
+      }
+
+      Alert.alert("Success", "Account created successfully!");
+      navigation.navigate("Login");
+    } catch (error) {
+      console.error(error);
+      Alert.alert("Error", "Something went wrong while signing up.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -52,7 +90,7 @@ const SignUpScreen = ({ navigation, onSignUp }) => {
         secureTextEntry
       />
 
-      {/* Currency Dropdown */}
+      {/* //Currency Dropdown  */}
       <Menu
         visible={menuVisible}
         onDismiss={() => setMenuVisible(false)}
@@ -101,7 +139,6 @@ const SignUpScreen = ({ navigation, onSignUp }) => {
         />
       </Menu>
 
-      {/* Monthly Budget */}
       <TextInput
         label="Monthly Budget"
         value={budget}

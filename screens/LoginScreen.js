@@ -1,9 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { View, StyleSheet, TouchableOpacity } from "react-native";
 import { Button, Text, TextInput, useTheme } from "react-native-paper";
-// import LottieView from "lottie-react-native"; // npm install lottie-react-native
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const LoginScreen = ({ navigation, onLogin }) => {
+const LoginScreen = ({ navigation }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -11,20 +11,28 @@ const LoginScreen = ({ navigation, onLogin }) => {
 
   const handleLoginPress = async () => {
     setLoading(true);
-    await onLogin(email, password);
-    setLoading(false); // Only reached if login fails
+
+    const storedUser = await AsyncStorage.getItem("user");
+    if (storedUser) {
+      const user = JSON.parse(storedUser);
+      if (user.email === email && user.password === password) {
+        alert("Login successful!");
+
+        setLoading(false);
+      } else {
+        alert("Invalid credentials!");
+        setLoading(false);
+      }
+    } else {
+      alert("No user found! Please sign up first.");
+      setLoading(false);
+    }
   };
 
   return (
     <View
       style={[styles.container, { backgroundColor: theme.colors.background }]}
     >
-      {/* <LottieView
-        source={require("./money-animation.json")} // You need to add a lottie file
-        autoPlay
-        loop
-        style={styles.lottie}
-      /> */}
       <Text variant="headlineMedium" style={styles.title}>
         Welcome Back!
       </Text>
@@ -62,7 +70,7 @@ const LoginScreen = ({ navigation, onLogin }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, justifyContent: "center" },
-  //   lottie: { width: 200, height: 200, alignSelf: "center" },
+
   title: { textAlign: "center", marginBottom: 20, fontWeight: "bold" },
   input: { marginBottom: 10 },
   button: { marginTop: 10, paddingVertical: 5 },

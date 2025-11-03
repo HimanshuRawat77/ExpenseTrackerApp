@@ -9,9 +9,9 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-// Import Screens
 import LoginScreen from "./screens/LoginScreen";
 import SignUpScreen from "./screens/SignUpScreen";
+import DashboardScreen from "./screens/DashboardScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -74,14 +74,30 @@ export default function App() {
     setUser(newUser);
   };
 
+  const handleLogout = async () => {
+    await AsyncStorage.removeItem("currentUser");
+    setUser(null);
+  };
+
   if (isLoading) return null;
 
-  // If user is logged in we can simply print welcome message
   if (user) {
     return (
       <PaperProvider theme={theme}>
         <NavigationContainer theme={theme}>
           <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} />
+
+          <Stack.Navigator screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="Dashboard">
+              {(props) => (
+                <DashboardScreen
+                  {...props}
+                  income={[]} // abhi temporay ke liyae empty arr.
+                  expenses={[]}
+                />
+              )}
+            </Stack.Screen>
+          </Stack.Navigator>
         </NavigationContainer>
       </PaperProvider>
     );
