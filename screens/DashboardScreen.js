@@ -1,38 +1,42 @@
 import React from "react";
 import { View, ScrollView, StyleSheet } from "react-native";
-import { Card, Text, useTheme } from "react-native-paper";
+import { Card, Text, IconButton, useTheme } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-const DashboardScreen = ({ expenses, income }) => {
+const DashboardScreen = ({ navigation, expenses = [], income = [] }) => {
   const theme = useTheme();
 
-  let totalExpense = 0;
-  let totalIncome = 0;
-
-  expenses.forEach((ex) => (totalExpense += ex.amount));
-  income.forEach((inc) => (totalIncome += inc.amount));
-
+  const totalExpense = expenses.reduce((sum, ex) => sum + ex.amount, 0);
+  const totalIncome = income.reduce((sum, inc) => sum + inc.amount, 0);
   const balance = totalIncome - totalExpense;
 
-  const categoryData = [];
   const categoryTotals = {};
-
   expenses.forEach((ex) => {
     categoryTotals[ex.category] =
       (categoryTotals[ex.category] || 0) + ex.amount;
   });
-
-  for (const key in categoryTotals) {
-    categoryData.push({ name: key, amount: categoryTotals[key] });
-  }
+  const categoryData = Object.entries(categoryTotals).map(([name, amount]) => ({
+    name,
+    amount,
+  }));
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text variant="headlineLarge" style={styles.title}>
-          Dashboard
-        </Text>
+      <View style={styles.headerRow}>
+        <IconButton
+          icon="arrow-left"
+          size={24}
+          onPress={() => navigation.goBack()}
+        />
+        <Text style={styles.headerTitle}>Dashboard</Text>
+        <IconButton
+          icon="cog"
+          size={24}
+          onPress={() => navigation.navigate("Settings")}
+        />
+      </View>
 
+      <ScrollView contentContainerStyle={styles.container}>
         <Card style={styles.card}>
           <Card.Title title="Financial Summary" />
           <Card.Content>
@@ -83,12 +87,21 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#fff",
   },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: "#ddd",
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+  },
   container: {
     padding: 15,
-  },
-  title: {
-    marginBottom: 15,
-    textAlign: "center",
   },
   card: {
     marginBottom: 15,

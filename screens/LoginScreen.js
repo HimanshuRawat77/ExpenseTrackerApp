@@ -1,30 +1,26 @@
-import React, { useState, useEffect } from "react";
-import { View, StyleSheet, TouchableOpacity } from "react-native";
+import React, { useState } from "react";
+import { View, StyleSheet, TouchableOpacity, Alert } from "react-native";
 import { Button, Text, TextInput, useTheme } from "react-native-paper";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const LoginScreen = ({ navigation }) => {
+const LoginScreen = ({ navigation, onLogin }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const theme = useTheme();
 
   const handleLoginPress = async () => {
+    if (!email.trim() || !password.trim()) {
+      Alert.alert("Error", "Please enter email and password.");
+      return;
+    }
     setLoading(true);
 
-    const storedUser = await AsyncStorage.getItem("user");
-    if (storedUser) {
-      const user = JSON.parse(storedUser);
-      if (user.email === email && user.password === password) {
-        alert("Login successful!");
-
-        setLoading(false);
-      } else {
-        alert("Invalid credentials!");
-        setLoading(false);
-      }
-    } else {
-      alert("No user found! Please sign up first.");
+    try {
+      await onLogin(email, password);
+    } catch (error) {
+      console.error("Login error:", error);
+      Alert.alert("Error", "Something went wrong.");
+    } finally {
       setLoading(false);
     }
   };
@@ -61,7 +57,7 @@ const LoginScreen = ({ navigation }) => {
       </Button>
       <TouchableOpacity onPress={() => navigation.navigate("SignUp")}>
         <Text style={[styles.link, { color: theme.colors.primary }]}>
-          Don't have an account? Sign Up
+          Don’t have an account? Sign Up
         </Text>
       </TouchableOpacity>
     </View>

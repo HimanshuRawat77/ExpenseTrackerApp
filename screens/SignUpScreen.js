@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { View, StyleSheet, TouchableOpacity, Alert } from "react-native";
 import { Button, Text, TextInput, Menu, useTheme } from "react-native-paper";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const SignUpScreen = ({ navigation, onSignUp }) => {
   const [name, setName] = useState("");
@@ -11,7 +10,7 @@ const SignUpScreen = ({ navigation, onSignUp }) => {
   const [budget, setBudget] = useState("");
   const [loading, setLoading] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
-
+  const [showPassword, setShowPassword] = useState(false);
   const theme = useTheme();
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -32,7 +31,7 @@ const SignUpScreen = ({ navigation, onSignUp }) => {
     if (!passwordRegex.test(password)) {
       Alert.alert(
         "Weak Password",
-        "Password must be at least 8 characters long, include one uppercase, one lowercase, one number, and one special character."
+        "Password must include uppercase, lowercase, number, and special character."
       );
       return;
     }
@@ -40,17 +39,9 @@ const SignUpScreen = ({ navigation, onSignUp }) => {
     setLoading(true);
 
     try {
-      const userData = { name, email, password, currency, budget };
-      await AsyncStorage.setItem("userData", JSON.stringify(userData));
-
-      if (onSignUp) {
-        await onSignUp(name, email, password, currency, budget);
-      }
-
-      Alert.alert("Success", "Account created successfully!");
-      navigation.navigate("Login");
+      await onSignUp(name, email, password, currency, budget);
     } catch (error) {
-      console.error(error);
+      console.error("SignUp error:", error);
       Alert.alert("Error", "Something went wrong while signing up.");
     } finally {
       setLoading(false);
@@ -70,7 +61,6 @@ const SignUpScreen = ({ navigation, onSignUp }) => {
         value={name}
         onChangeText={setName}
         style={styles.input}
-        autoCapitalize="words"
       />
 
       <TextInput
@@ -78,8 +68,8 @@ const SignUpScreen = ({ navigation, onSignUp }) => {
         value={email}
         onChangeText={setEmail}
         style={styles.input}
-        autoCapitalize="none"
         keyboardType="email-address"
+        autoCapitalize="none"
       />
 
       <TextInput
@@ -87,10 +77,14 @@ const SignUpScreen = ({ navigation, onSignUp }) => {
         value={password}
         onChangeText={setPassword}
         style={styles.input}
-        secureTextEntry
+        secureTextEntry={!showPassword}
+        right={
+          <TextInput.Icon
+            icon={showPassword ? "eye-off" : "eye"}
+            onPress={() => setShowPassword(!showPassword)}
+          />
+        }
       />
-
-      {/* //Currency Dropdown  */}
       <Menu
         visible={menuVisible}
         onDismiss={() => setMenuVisible(false)}
