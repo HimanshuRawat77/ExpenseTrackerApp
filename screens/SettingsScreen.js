@@ -20,9 +20,8 @@ const SettingsScreen = ({
   onSetIsDarkMode,
 }) => {
   const theme = useTheme();
-  const [currency, setCurrency] = useState("USD"); // default
+  const [currency, setCurrency] = useState("USD");
 
-  //  Load saved currency from AsyncStorage
   useEffect(() => {
     const loadCurrency = async () => {
       try {
@@ -62,7 +61,6 @@ const SettingsScreen = ({
     <SafeAreaView
       style={[styles.container, { backgroundColor: theme.colors.background }]}
     >
-      {/* Header */}
       <View style={styles.headerRow}>
         <IconButton
           icon="arrow-left"
@@ -99,7 +97,7 @@ const SettingsScreen = ({
         />
         <List.Item
           title="Currency"
-          description={currency} // 👈 Show saved currency here
+          description={currency}
           left={() => <List.Icon icon="currency-usd" />}
         />
       </List.Section>
