@@ -1,15 +1,34 @@
-import React from "react";
+import React, { useState } from "react";
 import { View, ScrollView, StyleSheet } from "react-native";
-import { Card, Text, IconButton, useTheme } from "react-native-paper";
+import {
+  Card,
+  Text,
+  IconButton,
+  useTheme,
+  BottomNavigation,
+} from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 const DashboardScreen = ({ navigation, expenses = [], income = [] }) => {
   const theme = useTheme();
+  const [index, setIndex] = useState(0);
+
+  // `focusedIcon`
+  const routes = [
+    {
+      key: "transactions",
+      title: "Transactions",
+      focusedIcon: "swap-horizontal",
+    },
+    { key: "add", title: "Add", focusedIcon: "plus-circle" },
+    { key: "converter", title: "Converter", focusedIcon: "currency-usd" },
+  ];
 
   const totalExpense = expenses.reduce((sum, ex) => sum + ex.amount, 0);
   const totalIncome = income.reduce((sum, inc) => sum + inc.amount, 0);
   const balance = totalIncome - totalExpense;
 
+  // Category totals
   const categoryTotals = {};
   expenses.forEach((ex) => {
     categoryTotals[ex.category] =
@@ -20,8 +39,18 @@ const DashboardScreen = ({ navigation, expenses = [], income = [] }) => {
     amount,
   }));
 
+  const handleTabChange = (newIndex) => {
+    setIndex(newIndex);
+    const key = routes[newIndex].key;
+
+    if (key === "transactions") navigation.navigate("Transactions");
+    if (key === "add") navigation.navigate("AddTransaction");
+    if (key === "converter") navigation.navigate("CurrencyConverter");
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
+      {/* Header */}
       <View style={styles.headerRow}>
         <IconButton
           icon="arrow-left"
@@ -36,6 +65,7 @@ const DashboardScreen = ({ navigation, expenses = [], income = [] }) => {
         />
       </View>
 
+      {/* Main content */}
       <ScrollView contentContainerStyle={styles.container}>
         <Card style={styles.card}>
           <Card.Title title="Financial Summary" />
@@ -78,15 +108,26 @@ const DashboardScreen = ({ navigation, expenses = [], income = [] }) => {
           </Card.Content>
         </Card>
       </ScrollView>
+
+      {/* Bottom Navigation */}
+      <BottomNavigation
+        navigationState={{ index, routes }}
+        onIndexChange={handleTabChange}
+        renderScene={() => null}
+        barStyle={{
+          backgroundColor: theme.dark ? "#1e1e1e" : "#ffffff",
+          borderTopWidth: 1,
+          borderTopColor: theme.dark ? "#333" : "#ddd",
+        }}
+        activeColor={theme.colors.primary}
+        inactiveColor={theme.dark ? "#aaa" : "#888"}
+      />
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: "#fff",
-  },
+  safeArea: { flex: 1, backgroundColor: "#fff" },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -96,33 +137,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#ddd",
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-  },
-  container: {
-    padding: 15,
-  },
-  card: {
-    marginBottom: 15,
-  },
-  summaryText: {
-    fontSize: 16,
-    marginBottom: 5,
-  },
-  incomeText: {
-    color: "green",
-    fontWeight: "bold",
-  },
-  expenseText: {
-    color: "red",
-    fontWeight: "bold",
-  },
-  balance: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginTop: 10,
-  },
+  headerTitle: { fontSize: 18, fontWeight: "bold" },
+  container: { padding: 15, paddingBottom: 90 },
+  card: { marginBottom: 15 },
+  summaryText: { fontSize: 16, marginBottom: 5 },
+  incomeText: { color: "green", fontWeight: "bold" },
+  expenseText: { color: "red", fontWeight: "bold" },
+  balance: { fontSize: 18, fontWeight: "bold", marginTop: 10 },
   categoryRow: {
     flexDirection: "row",
     justifyContent: "space-between",
