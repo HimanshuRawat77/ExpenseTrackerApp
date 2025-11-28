@@ -8,6 +8,7 @@ import {
   useTheme,
   Avatar,
   IconButton,
+  Menu,
 } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -20,18 +21,14 @@ const SettingsScreen = ({
   onSetIsDarkMode,
 }) => {
   const theme = useTheme();
-  const [currency, setCurrency] = useState("USD");
+  const [currency, setCurrency] = useState("INR");
+  const [menuVisible, setMenuVisible] = useState(false);
 
   useEffect(() => {
     const loadCurrency = async () => {
       try {
-        const storedData = await AsyncStorage.getItem("userData");
-        if (storedData) {
-          const parsedData = JSON.parse(storedData);
-          if (parsedData.currency) {
-            setCurrency(parsedData.currency);
-          }
-        }
+        const savedCurrency = await AsyncStorage.getItem("userCurrency");
+        if (savedCurrency) setCurrency(savedCurrency);
       } catch (error) {
         console.log("Error loading currency:", error);
       }
@@ -39,6 +36,16 @@ const SettingsScreen = ({
 
     loadCurrency();
   }, []);
+  const changeCurrency = async (newCurrency) => {
+    try {
+      setCurrency(newCurrency);
+      await AsyncStorage.setItem("userCurrency", newCurrency);
+      setMenuVisible(false);
+      Alert.alert("Success", "Currency updated.");
+    } catch (err) {
+      console.log("Error saving currency:", err);
+    }
+  };
 
   const confirmLogout = () => {
     Alert.alert("Logout", "Are you sure you want to logout?", [
@@ -95,11 +102,23 @@ const SettingsScreen = ({
             <Switch value={isDarkMode} onValueChange={onSetIsDarkMode} />
           )}
         />
-        <List.Item
-          title="Currency"
-          description={currency}
-          left={() => <List.Icon icon="currency-usd" />}
-        />
+        <Menu
+          visible={menuVisible}
+          onDismiss={() => setMenuVisible(false)}
+          anchor={
+            <List.Item
+              title="Currency"
+              description={currency}
+              left={() => <List.Icon icon="currency-usd" />}
+              onPress={() => setMenuVisible(true)}
+            />
+          }
+        >
+          <Menu.Item title="INR (₹)" onPress={() => changeCurrency("INR")} />
+          <Menu.Item title="USD ($)" onPress={() => changeCurrency("USD")} />
+          <Menu.Item title="EUR (€)" onPress={() => changeCurrency("EUR")} />
+          <Menu.Item title="GBP (£)" onPress={() => changeCurrency("GBP")} />
+        </Menu>
       </List.Section>
 
       {/* Account */}
@@ -132,7 +151,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 10,
-    paddingTop: 5,
+    paddingTop: 10,
     borderBottomWidth: 1,
     borderBottomColor: "#ddd",
   },

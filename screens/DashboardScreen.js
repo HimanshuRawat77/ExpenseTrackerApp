@@ -16,21 +16,28 @@ const DashboardScreen = ({ navigation }) => {
 
   const [expenses, setExpenses] = useState([]);
   const [income, setIncome] = useState([]);
+  const [currency, setCurrency] = useState("INR");
 
-  // Load stored data on mount
+  const currencySymbol = {
+    INR: "₹",
+    USD: "$",
+    EUR: "€",
+    GBP: "£",
+  }[currency];
   useEffect(() => {
     const loadData = async () => {
       const savedExpenses = await AsyncStorage.getItem("expenses");
       const savedIncome = await AsyncStorage.getItem("income");
+      const savedCurrency = await AsyncStorage.getItem("userCurrency");
 
       if (savedExpenses) setExpenses(JSON.parse(savedExpenses));
       if (savedIncome) setIncome(JSON.parse(savedIncome));
+      if (savedCurrency) setCurrency(savedCurrency);
     };
 
     loadData();
   }, []);
 
-  // Bottom navigation routes
   const routes = [
     {
       key: "transactions",
@@ -41,12 +48,10 @@ const DashboardScreen = ({ navigation }) => {
     { key: "converter", title: "Converter", focusedIcon: "currency-usd" },
   ];
 
-  // Calculations
   const totalExpense = expenses.reduce((sum, ex) => sum + ex.amount, 0);
   const totalIncome = income.reduce((sum, inc) => sum + inc.amount, 0);
   const balance = totalIncome - totalExpense;
 
-  // Category totals
   const categoryTotals = {};
   expenses.forEach((ex) => {
     categoryTotals[ex.category] =
@@ -58,7 +63,6 @@ const DashboardScreen = ({ navigation }) => {
     amount,
   }));
 
-  // Handle bottom tab press
   const handleTabChange = (newIndex) => {
     setIndex(newIndex);
     const key = routes[newIndex].key;
@@ -85,21 +89,26 @@ const DashboardScreen = ({ navigation }) => {
         />
       </View>
 
-      {/* Content */}
+      {/* Main Content */}
       <ScrollView contentContainerStyle={styles.container}>
         <Card style={styles.card}>
           <Card.Title title="Financial Summary" />
           <Card.Content>
             <Text style={styles.summaryText}>
               Total Income:
-              <Text style={styles.incomeText}> ${totalIncome.toFixed(2)}</Text>
+              <Text style={styles.incomeText}>
+                {" "}
+                {currencySymbol}
+                {totalIncome.toFixed(2)}
+              </Text>
             </Text>
 
             <Text style={styles.summaryText}>
               Total Expenses:
               <Text style={styles.expenseText}>
                 {" "}
-                ${totalExpense.toFixed(2)}
+                {currencySymbol}
+                {totalExpense.toFixed(2)}
               </Text>
             </Text>
 
@@ -109,7 +118,8 @@ const DashboardScreen = ({ navigation }) => {
                 { color: balance >= 0 ? "green" : theme.colors.error },
               ]}
             >
-              Balance: ${balance.toFixed(2)}
+              Balance: {currencySymbol}
+              {balance.toFixed(2)}
             </Text>
           </Card.Content>
         </Card>
@@ -121,7 +131,10 @@ const DashboardScreen = ({ navigation }) => {
               categoryData.map((item) => (
                 <View key={item.name} style={styles.categoryRow}>
                   <Text>{item.name}</Text>
-                  <Text>${item.amount.toFixed(2)}</Text>
+                  <Text>
+                    {currencySymbol}
+                    {item.amount.toFixed(2)}
+                  </Text>
                 </View>
               ))
             ) : (

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { View, StyleSheet, TouchableOpacity, Alert } from "react-native";
 import { Button, Text, TextInput, Menu, useTheme } from "react-native-paper";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const SignUpScreen = ({ navigation, onSignUp }) => {
   const [name, setName] = useState("");
@@ -40,6 +41,7 @@ const SignUpScreen = ({ navigation, onSignUp }) => {
 
     try {
       await onSignUp(name, email, password, currency, budget);
+      await AsyncStorage.setItem("userCurrency", currency);
     } catch (error) {
       console.error("SignUp error:", error);
       Alert.alert("Error", "Something went wrong while signing up.");
@@ -104,32 +106,32 @@ const SignUpScreen = ({ navigation, onSignUp }) => {
         }
       >
         <Menu.Item
+          title="INR (₹)"
           onPress={() => {
             setCurrency("INR");
             setMenuVisible(false);
           }}
-          title="INR (₹)"
         />
         <Menu.Item
+          title="USD ($)"
           onPress={() => {
             setCurrency("USD");
             setMenuVisible(false);
           }}
-          title="USD ($)"
         />
         <Menu.Item
+          title="EUR (€)"
           onPress={() => {
             setCurrency("EUR");
             setMenuVisible(false);
           }}
-          title="EUR (€)"
         />
         <Menu.Item
+          title="GBP (£)"
           onPress={() => {
             setCurrency("GBP");
             setMenuVisible(false);
           }}
-          title="GBP (£)"
         />
       </Menu>
 
