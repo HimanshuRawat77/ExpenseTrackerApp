@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { View, ScrollView, StyleSheet } from "react-native";
 import {
   Card,
@@ -8,12 +8,29 @@ import {
   BottomNavigation,
 } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const DashboardScreen = ({ navigation, expenses = [], income = [] }) => {
+const DashboardScreen = ({ navigation }) => {
   const theme = useTheme();
   const [index, setIndex] = useState(0);
 
-  // `focusedIcon`
+  const [expenses, setExpenses] = useState([]);
+  const [income, setIncome] = useState([]);
+
+  // Load stored data on mount
+  useEffect(() => {
+    const loadData = async () => {
+      const savedExpenses = await AsyncStorage.getItem("expenses");
+      const savedIncome = await AsyncStorage.getItem("income");
+
+      if (savedExpenses) setExpenses(JSON.parse(savedExpenses));
+      if (savedIncome) setIncome(JSON.parse(savedIncome));
+    };
+
+    loadData();
+  }, []);
+
+  // Bottom navigation routes
   const routes = [
     {
       key: "transactions",
@@ -24,6 +41,7 @@ const DashboardScreen = ({ navigation, expenses = [], income = [] }) => {
     { key: "converter", title: "Converter", focusedIcon: "currency-usd" },
   ];
 
+  // Calculations
   const totalExpense = expenses.reduce((sum, ex) => sum + ex.amount, 0);
   const totalIncome = income.reduce((sum, inc) => sum + inc.amount, 0);
   const balance = totalIncome - totalExpense;
@@ -34,11 +52,13 @@ const DashboardScreen = ({ navigation, expenses = [], income = [] }) => {
     categoryTotals[ex.category] =
       (categoryTotals[ex.category] || 0) + ex.amount;
   });
+
   const categoryData = Object.entries(categoryTotals).map(([name, amount]) => ({
     name,
     amount,
   }));
 
+  // Handle bottom tab press
   const handleTabChange = (newIndex) => {
     setIndex(newIndex);
     const key = routes[newIndex].key;
@@ -65,7 +85,7 @@ const DashboardScreen = ({ navigation, expenses = [], income = [] }) => {
         />
       </View>
 
-      {/* Main content */}
+      {/* Content */}
       <ScrollView contentContainerStyle={styles.container}>
         <Card style={styles.card}>
           <Card.Title title="Financial Summary" />
@@ -74,6 +94,7 @@ const DashboardScreen = ({ navigation, expenses = [], income = [] }) => {
               Total Income:
               <Text style={styles.incomeText}> ${totalIncome.toFixed(2)}</Text>
             </Text>
+
             <Text style={styles.summaryText}>
               Total Expenses:
               <Text style={styles.expenseText}>
@@ -81,6 +102,7 @@ const DashboardScreen = ({ navigation, expenses = [], income = [] }) => {
                 ${totalExpense.toFixed(2)}
               </Text>
             </Text>
+
             <Text
               style={[
                 styles.balance,
