@@ -1,34 +1,46 @@
 import React, { useState } from "react";
 import { View, StyleSheet, ScrollView } from "react-native";
 import { Button, Text, TextInput, SegmentedButtons } from "react-native-paper";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-const AddTransactionScreen = ({ navigation, onAddExpense, onAddIncome }) => {
-  const [type, setType] = useState("expense"); // 'expense' or 'income'
+const AddTransactionScreen = ({ navigation }) => {
+  const [type, setType] = useState("expense");
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("");
   const [notes, setNotes] = useState("");
 
-  const handleSubmit = () => {
+  const saveToStorage = async (key, newItem) => {
+    try {
+      const existing = await AsyncStorage.getItem(key);
+      const parsed = existing ? JSON.parse(existing) : [];
+      const updated = [...parsed, newItem];
+      await AsyncStorage.setItem(key, JSON.stringify(updated));
+    } catch (error) {
+      console.log("Storage error:", error);
+    }
+  };
+
+  const handleSubmit = async () => {
     if (!amount || !category) {
       alert("Please enter an amount and category.");
       return;
     }
 
     const data = {
-      id: new Date().toISOString() + Math.random().toString(), // Unique ID
+      id: new Date().toISOString() + Math.random().toString(),
       amount: parseFloat(amount),
-      category: category,
-      notes: notes,
+      category,
+      notes,
       date: new Date().toISOString(),
     };
 
     if (type === "expense") {
-      onAddExpense(data);
+      await saveToStorage("expenses", data);
     } else {
-      onAddIncome(data);
+      await saveToStorage("income", data);
     }
 
-    // Reset form and navigate away
     setAmount("");
     setCategory("");
     setNotes("");
@@ -37,56 +49,77 @@ const AddTransactionScreen = ({ navigation, onAddExpense, onAddIncome }) => {
   };
 
   return (
-    <ScrollView style={styles.container}>
-      <Text variant="headlineMedium" style={styles.title}>
-        Add Transaction
-      </Text>
+    <SafeAreaView style={styles.safeArea}>
+      <ScrollView contentContainerStyle={styles.container}>
+        <Text variant="headlineMedium" style={styles.title}>
+          Add Transaction
+        </Text>
 
-      <SegmentedButtons
-        value={type}
-        onValueChange={setType}
-        buttons={[
-          { value: "expense", label: "Expense", icon: "arrow-down" },
-          { value: "income", label: "Income", icon: "arrow-up" },
-        ]}
-        style={styles.segmented}
-      />
+        <SegmentedButtons
+          value={type}
+          onValueChange={setType}
+          buttons={[
+            { value: "expense", label: "Expense", icon: "arrow-down" },
+            { value: "income", label: "Income", icon: "arrow-up" },
+          ]}
+          style={styles.segmented}
+        />
 
-      <TextInput
-        label="Amount"
-        value={amount}
-        onChangeText={setAmount}
-        style={styles.input}
-        keyboardType="numeric"
-      />
-      <TextInput
-        label={
-          type === "expense" ? "Category (e.g., Food)" : "Source (e.g., Salary)"
-        }
-        value={category}
-        onChangeText={setCategory}
-        style={styles.input}
-      />
-      <TextInput
-        label="Notes (Optional)"
-        value={notes}
-        onChangeText={setNotes}
-        style={styles.input}
-      />
+        <TextInput
+          label="Amount"
+          value={amount}
+          onChangeText={setAmount}
+          style={styles.input}
+          keyboardType="numeric"
+        />
+        <TextInput
+          label={
+            type === "expense"
+              ? "Category (e.g., Food)"
+              : "Source (e.g., Salary)"
+          }
+          value={category}
+          onChangeText={setCategory}
+          style={styles.input}
+        />
+        <TextInput
+          label="Notes (Optional)"
+          value={notes}
+          onChangeText={setNotes}
+          style={styles.input}
+        />
 
-      <Button mode="contained" onPress={handleSubmit} style={styles.button}>
-        Add {type === "expense" ? "Expense" : "Income"}
-      </Button>
-    </ScrollView>
+        <Button mode="contained" onPress={handleSubmit} style={styles.button}>
+          Add {type === "expense" ? "Expense" : "Income"}
+        </Button>
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20 },
-  title: { textAlign: "center", marginBottom: 20 },
-  segmented: { marginBottom: 20 },
-  input: { marginBottom: 15 },
-  button: { marginTop: 10, paddingVertical: 5 },
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#fff",
+  },
+  container: {
+    padding: 20,
+    paddingBottom: 50,
+  },
+  title: {
+    textAlign: "center",
+    marginBottom: 20,
+  },
+  segmented: {
+    marginBottom: 20,
+  },
+  input: {
+    marginBottom: 15,
+  },
+  button: {
+    marginTop: 10,
+    paddingVertical: 5,
+  },
 });
 
 export default AddTransactionScreen;
