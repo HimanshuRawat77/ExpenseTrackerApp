@@ -14,6 +14,7 @@ import {
   Card,
   HelperText,
 } from "react-native-paper";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 const CurrencyConverterScreen = () => {
   const theme = useTheme();
@@ -67,69 +68,71 @@ const CurrencyConverterScreen = () => {
   }, [fromCurrency, toCurrency]);
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={[styles.title, { color: theme.colors.primary }]}>
-          🌍 Currency Converter
-        </Text>
+    <SafeAreaView style={{ flex: 1 }}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <ScrollView contentContainerStyle={styles.container}>
+          <Text style={[styles.title, { color: theme.colors.primary }]}>
+            🌍 Currency Converter
+          </Text>
 
-        <Card style={styles.card}>
-          <Card.Content>
-            <TextInput
-              label="Amount"
-              mode="outlined"
-              keyboardType="numeric"
-              value={amount}
-              onChangeText={setAmount}
-              style={styles.input}
-            />
-
-            <View style={styles.row}>
+          <Card style={styles.card}>
+            <Card.Content>
               <TextInput
-                label="From"
+                label="Amount"
                 mode="outlined"
-                value={fromCurrency}
-                onChangeText={setFromCurrency}
-                style={[styles.input, { flex: 1, marginRight: 5 }]}
+                keyboardType="numeric"
+                value={amount}
+                onChangeText={setAmount}
+                style={styles.input}
               />
-              <TextInput
-                label="To"
-                mode="outlined"
-                value={toCurrency}
-                onChangeText={setToCurrency}
-                style={[styles.input, { flex: 1, marginLeft: 5 }]}
-              />
-            </View>
 
-            {error ? (
-              <HelperText type="error" visible={true}>
-                {error}
-              </HelperText>
-            ) : null}
+              <View style={styles.row}>
+                <TextInput
+                  label="From"
+                  mode="outlined"
+                  value={fromCurrency}
+                  onChangeText={setFromCurrency}
+                  style={[styles.input, { flex: 1, marginRight: 5 }]}
+                />
+                <TextInput
+                  label="To"
+                  mode="outlined"
+                  value={toCurrency}
+                  onChangeText={setToCurrency}
+                  style={[styles.input, { flex: 1, marginLeft: 5 }]}
+                />
+              </View>
 
-            <Button
-              mode="contained"
-              style={styles.button}
-              onPress={fetchConversion}
-            >
-              Convert
-            </Button>
+              {error ? (
+                <HelperText type="error" visible={true}>
+                  {error}
+                </HelperText>
+              ) : null}
 
-            {result && (
-              <Text style={styles.result}>
-                {amount} {fromCurrency} ={" "}
-                <Text style={{ fontWeight: "bold", color: "green" }}>
-                  {result} {toCurrency}
+              <Button
+                mode="contained"
+                style={styles.button}
+                onPress={fetchConversion}
+              >
+                Convert
+              </Button>
+
+              {result && (
+                <Text style={styles.result}>
+                  {amount} {fromCurrency} ={" "}
+                  <Text style={{ fontWeight: "bold", color: "green" }}>
+                    {result} {toCurrency}
+                  </Text>
                 </Text>
-              </Text>
-            )}
-          </Card.Content>
-        </Card>
-      </ScrollView>
-    </KeyboardAvoidingView>
+              )}
+            </Card.Content>
+          </Card>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
