@@ -1,6 +1,12 @@
 import React, { useState } from "react";
 import { View, StyleSheet, ScrollView } from "react-native";
-import { Button, Text, TextInput, SegmentedButtons } from "react-native-paper";
+import {
+  Button,
+  Text,
+  TextInput,
+  SegmentedButtons,
+  IconButton,
+} from "react-native-paper";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -50,11 +56,18 @@ const AddTransactionScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text variant="headlineMedium" style={styles.title}>
-          Add Transaction
-        </Text>
+      <View style={styles.headerRow}>
+        <IconButton
+          icon="arrow-left"
+          size={24}
+          onPress={() => navigation.goBack()}
+        />
 
+        <Text style={styles.headerTitle}>Add Transaction</Text>
+        <View style={{ width: 40 }} />
+      </View>
+
+      <ScrollView contentContainerStyle={styles.container}>
         <SegmentedButtons
           value={type}
           onValueChange={setType}
@@ -102,13 +115,25 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#fff",
   },
+
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: "#ddd",
+  },
+
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+  },
+
   container: {
     padding: 20,
     paddingBottom: 50,
-  },
-  title: {
-    textAlign: "center",
-    marginBottom: 20,
   },
   segmented: {
     marginBottom: 20,

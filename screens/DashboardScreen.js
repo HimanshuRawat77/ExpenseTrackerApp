@@ -76,11 +76,7 @@ const DashboardScreen = ({ navigation }) => {
     <SafeAreaView style={styles.safeArea}>
       {/* Header */}
       <View style={styles.headerRow}>
-        <IconButton
-          icon="arrow-left"
-          size={24}
-          onPress={() => navigation.goBack()}
-        />
+        <View style={{ width: 40 }} />
         <Text style={styles.headerTitle}>Dashboard</Text>
         <IconButton
           icon="cog"

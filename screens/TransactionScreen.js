@@ -57,17 +57,15 @@ const isSameYear = (date) => {
   return now.getFullYear() === d.getFullYear();
 };
 
-/* ---------------------- MAIN SCREEN -------------------------- */
 const TransactionsScreen = () => {
   const theme = useTheme();
-  const navigation = useNavigation(); // Fix for navigation does not exist
+  const navigation = useNavigation();
 
   const [expenses, setExpenses] = useState([]);
   const [income, setIncome] = useState([]);
   const [filter, setFilter] = useState("all");
   const [menuVisible, setMenuVisible] = useState(false);
 
-  /* -------- LOAD DATA FROM ASYNC STORAGE -------- */
   const loadTransactions = async () => {
     const e = await AsyncStorage.getItem("expenses");
     const i = await AsyncStorage.getItem("income");
@@ -164,6 +162,16 @@ const TransactionsScreen = () => {
 
   return (
     <SafeAreaView style={{ flex: 1 }}>
+      <Button
+        mode="text"
+        icon="arrow-left"
+        onPress={() => navigation.goBack()}
+        textColor="black"
+        style={{ alignSelf: "flex-start", marginLeft: 10 }}
+      >
+        Back
+      </Button>
+
       <View style={styles.container}>
         <View style={styles.dropdownWrapper}>
           <Menu

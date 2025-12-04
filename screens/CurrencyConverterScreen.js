@@ -13,10 +13,11 @@ import {
   useTheme,
   Card,
   HelperText,
+  IconButton,
 } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-const CurrencyConverterScreen = () => {
+const CurrencyConverterScreen = ({ navigation }) => {
   const theme = useTheme();
   const [amount, setAmount] = useState("1");
   const [fromCurrency, setFromCurrency] = useState("USD");
@@ -24,7 +25,6 @@ const CurrencyConverterScreen = () => {
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
 
-  //  List of supported currencies
   const currencyList = [
     "USD",
     "INR",
@@ -69,6 +69,17 @@ const CurrencyConverterScreen = () => {
 
   return (
     <SafeAreaView style={{ flex: 1 }}>
+      <View style={styles.headerRow}>
+        <IconButton
+          icon="arrow-left"
+          size={24}
+          onPress={() => navigation.goBack()}
+        />
+
+        <Text style={styles.headerTitle}>Currency Converter</Text>
+
+        <View style={{ width: 40 }} />
+      </View>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -137,6 +148,20 @@ const CurrencyConverterScreen = () => {
 };
 
 const styles = StyleSheet.create({
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#ddd",
+    backgroundColor: "#fff",
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+  },
   container: {
     padding: 20,
     justifyContent: "center",
