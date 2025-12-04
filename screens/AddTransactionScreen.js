@@ -51,7 +51,7 @@ const AddTransactionScreen = ({ navigation }) => {
     setCategory("");
     setNotes("");
     alert(`${type === "expense" ? "Expense" : "Income"} added!`);
-    navigation.navigate("Dashboard");
+    navigation.navigate("Home", { screen: "Dashboard" });
   };
 
   return (
