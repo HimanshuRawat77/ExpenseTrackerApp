@@ -38,7 +38,6 @@ const CurrencyConverterScreen = ({ navigation }) => {
     "NZD",
   ];
 
-  // Fetch latest conversion rate
   const fetchConversion = async () => {
     if (!amount || isNaN(amount)) {
       setError("Please enter a valid amount");
@@ -68,16 +67,14 @@ const CurrencyConverterScreen = ({ navigation }) => {
   }, [fromCurrency, toCurrency]);
 
   return (
-    <SafeAreaView style={{ flex: 1 }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#f2f5fa" }}>
       <View style={styles.headerRow}>
         <IconButton
           icon="arrow-left"
-          size={24}
+          size={28}
           onPress={() => navigation.goBack()}
         />
-
         <Text style={styles.headerTitle}>Currency Converter</Text>
-
         <View style={{ width: 40 }} />
       </View>
       <KeyboardAvoidingView
@@ -98,6 +95,8 @@ const CurrencyConverterScreen = ({ navigation }) => {
                 value={amount}
                 onChangeText={setAmount}
                 style={styles.input}
+                outlineColor="#ccc"
+                activeOutlineColor={theme.colors.primary}
               />
 
               <View style={styles.row}>
@@ -107,6 +106,8 @@ const CurrencyConverterScreen = ({ navigation }) => {
                   value={fromCurrency}
                   onChangeText={setFromCurrency}
                   style={[styles.input, { flex: 1, marginRight: 5 }]}
+                  outlineColor="#ccc"
+                  activeOutlineColor={theme.colors.primary}
                 />
                 <TextInput
                   label="To"
@@ -114,6 +115,8 @@ const CurrencyConverterScreen = ({ navigation }) => {
                   value={toCurrency}
                   onChangeText={setToCurrency}
                   style={[styles.input, { flex: 1, marginLeft: 5 }]}
+                  outlineColor="#ccc"
+                  activeOutlineColor={theme.colors.primary}
                 />
               </View>
 
@@ -127,17 +130,20 @@ const CurrencyConverterScreen = ({ navigation }) => {
                 mode="contained"
                 style={styles.button}
                 onPress={fetchConversion}
+                contentStyle={{ paddingVertical: 8 }}
               >
                 Convert
               </Button>
 
               {result && (
-                <Text style={styles.result}>
-                  {amount} {fromCurrency} ={" "}
-                  <Text style={{ fontWeight: "bold", color: "green" }}>
+                <View style={styles.resultBox}>
+                  <Text style={styles.resultText}>
+                    {amount} {fromCurrency} =
+                  </Text>
+                  <Text style={styles.resultValue}>
                     {result} {toCurrency}
                   </Text>
-                </Text>
+                </View>
               )}
             </Card.Content>
           </Card>
@@ -152,44 +158,59 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#ddd",
-    backgroundColor: "#fff",
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    backgroundColor: "#3F51B5",
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#fff",
   },
   container: {
     padding: 20,
-    justifyContent: "center",
   },
   title: {
     textAlign: "center",
-    fontSize: 22,
-    fontWeight: "bold",
-    marginBottom: 20,
+    fontSize: 24,
+    fontWeight: "700",
+    marginBottom: 25,
   },
   card: {
-    padding: 10,
+    borderRadius: 16,
+    paddingVertical: 15,
+    paddingHorizontal: 10,
+    elevation: 6,
+    backgroundColor: "#fff",
   },
   input: {
     marginBottom: 15,
-  },
-  button: {
-    marginTop: 10,
-    marginBottom: 10,
+    backgroundColor: "#f9f9f9",
   },
   row: {
     flexDirection: "row",
-    justifyContent: "space-between",
   },
-  result: {
-    textAlign: "center",
-    marginTop: 15,
-    fontSize: 18,
+  button: {
+    marginTop: 10,
+    borderRadius: 12,
+    backgroundColor: "#3F51B5",
+  },
+  resultBox: {
+    marginTop: 20,
+    padding: 15,
+    borderRadius: 12,
+    backgroundColor: "#eaf5ea",
+    alignItems: "center",
+  },
+  resultText: {
+    fontSize: 16,
+    fontWeight: "500",
+    marginBottom: 5,
+  },
+  resultValue: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#27AE60",
   },
 });
 
