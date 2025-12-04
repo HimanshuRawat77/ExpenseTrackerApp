@@ -1,16 +1,10 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { View, FlatList, StyleSheet, Alert } from "react-native";
-import {
-  Text,
-  List,
-  useTheme,
-  IconButton,
-  Button,
-  Menu,
-} from "react-native-paper";
+import { Text, List, useTheme, IconButton, Button } from "react-native-paper";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
+import DateTimePicker from "@react-native-community/datetimepicker";
 const parseDate = (value) => {
   if (!value) return new Date();
   let d = new Date(value);
@@ -37,24 +31,12 @@ const formatDate = (dateValue) => {
   return `${day}/${month}/${year}`;
 };
 
-const isSameWeek = (date) => {
-  const now = new Date();
-  const d = parseDate(date);
-  return now - d <= 7 * 24 * 60 * 60 * 1000;
-};
-
-const isSameMonth = (date) => {
-  const now = new Date();
-  const d = parseDate(date);
+const isSameDay = (d1, d2) => {
   return (
-    now.getMonth() === d.getMonth() && now.getFullYear() === d.getFullYear()
+    d1.getDate() === d2.getDate() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getFullYear() === d2.getFullYear()
   );
-};
-
-const isSameYear = (date) => {
-  const now = new Date();
-  const d = parseDate(date);
-  return now.getFullYear() === d.getFullYear();
 };
 
 const TransactionsScreen = () => {
@@ -63,8 +45,8 @@ const TransactionsScreen = () => {
 
   const [expenses, setExpenses] = useState([]);
   const [income, setIncome] = useState([]);
-  const [filter, setFilter] = useState("all");
-  const [menuVisible, setMenuVisible] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [showPicker, setShowPicker] = useState(false);
 
   const loadTransactions = async () => {
     const e = await AsyncStorage.getItem("expenses");
@@ -75,8 +57,8 @@ const TransactionsScreen = () => {
   };
 
   useEffect(() => {
-    const unsubscribe = navigation.addListener("focus", loadTransactions);
-    return unsubscribe;
+    const unsub = navigation.addListener("focus", loadTransactions);
+    return unsub;
   }, []);
 
   const deleteItem = async (item) => {
@@ -91,16 +73,11 @@ const TransactionsScreen = () => {
     }
   };
 
-  const handleDelete = (item) => {
+  const handleDelete = (item) =>
     Alert.alert("Delete", `Remove this ${item.type}?`, [
       { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => deleteItem(item),
-      },
+      { text: "Delete", style: "destructive", onPress: () => deleteItem(item) },
     ]);
-  };
 
   const allTransactions = useMemo(() => {
     const combined = [
@@ -108,30 +85,27 @@ const TransactionsScreen = () => {
       ...income.map((i) => ({ ...i, type: "income" })),
     ].sort((a, b) => parseDate(b.date) - parseDate(a.date));
 
-    return combined.filter((item) => {
-      if (filter === "weekly") return isSameWeek(item.date);
-      if (filter === "monthly") return isSameMonth(item.date);
-      if (filter === "yearly") return isSameYear(item.date);
-      return true;
-    });
-  }, [expenses, income, filter]);
+    if (!selectedDate) return combined;
+    return combined.filter((item) =>
+      isSameDay(parseDate(item.date), selectedDate)
+    );
+  }, [expenses, income, selectedDate]);
 
   const groupedData = useMemo(() => {
-    const map = {};
+    const grouped = {};
     allTransactions.forEach((t) => {
       const d = formatDate(t.date);
-      if (!map[d]) map[d] = [];
-      map[d].push(t);
+      if (!grouped[d]) grouped[d] = [];
+      grouped[d].push(t);
     });
-    return Object.keys(map).map((date) => ({
+    return Object.keys(grouped).map((date) => ({
       title: date,
-      data: map[date],
+      data: grouped[date],
     }));
   }, [allTransactions]);
 
   const renderItem = (item) => {
-    const isExpense = item.type === "expense";
-    const color = isExpense ? theme.colors.error : "green";
+    const color = item.type === "expense" ? theme.colors.error : "green";
 
     return (
       <List.Item
@@ -140,14 +114,16 @@ const TransactionsScreen = () => {
         description={item.notes}
         left={() => (
           <List.Icon
-            icon={isExpense ? "arrow-down-circle" : "arrow-up-circle"}
+            icon={
+              item.type === "expense" ? "arrow-down-circle" : "arrow-up-circle"
+            }
             color={color}
           />
         )}
         right={() => (
           <View style={styles.row}>
             <Text style={[styles.amount, { color }]}>
-              {isExpense ? "-" : "+"}₹{item.amount.toFixed(2)}
+              {item.type === "expense" ? "-" : "+"}₹{item.amount.toFixed(2)}
             </Text>
             <IconButton
               icon="trash-can-outline"
@@ -172,75 +148,60 @@ const TransactionsScreen = () => {
         Back
       </Button>
 
-      <View style={styles.container}>
-        <View style={styles.dropdownWrapper}>
-          <Menu
-            visible={menuVisible}
-            onDismiss={() => setMenuVisible(false)}
-            anchor={
-              <Button
-                mode="outlined"
-                onPress={() => setMenuVisible(true)}
-                icon="filter"
-              >
-                Filter: {filter.toUpperCase()}
-              </Button>
-            }
-          >
-            <Menu.Item
-              title="All Transactions"
-              onPress={() => {
-                setFilter("all");
-                setMenuVisible(false);
-              }}
-            />
-            <Menu.Item
-              title="Weekly"
-              onPress={() => {
-                setFilter("weekly");
-                setMenuVisible(false);
-              }}
-            />
-            <Menu.Item
-              title="Monthly"
-              onPress={() => {
-                setFilter("monthly");
-                setMenuVisible(false);
-              }}
-            />
-            <Menu.Item
-              title="Yearly"
-              onPress={() => {
-                setFilter("yearly");
-                setMenuVisible(false);
-              }}
-            />
-          </Menu>
-        </View>
-
-        <FlatList
-          data={groupedData}
-          keyExtractor={(item) => item.title}
-          renderItem={({ item }) => (
-            <View>
-              <Text style={styles.dateHeader}>{item.title}</Text>
-              {item.data.map((t) => renderItem(t))}
-            </View>
-          )}
-          ListEmptyComponent={
-            <Text style={styles.emptyText}>No transactions found.</Text>
-          }
+      <View style={styles.calendarContainer}>
+        <IconButton
+          icon="calendar"
+          size={30}
+          onPress={() => setShowPicker(true)}
         />
+
+        {selectedDate && (
+          <Button
+            mode="text"
+            onPress={() => setSelectedDate(null)}
+            textColor="red"
+          >
+            Clear Date
+          </Button>
+        )}
       </View>
+      {showPicker && (
+        <DateTimePicker
+          value={selectedDate || new Date()}
+          mode="date"
+          display="default"
+          onChange={(event, date) => {
+            setShowPicker(false);
+            if (date) setSelectedDate(date);
+          }}
+        />
+      )}
+
+      <FlatList
+        data={groupedData}
+        keyExtractor={(item) => item.title}
+        renderItem={({ item }) => (
+          <View>
+            <Text style={styles.dateHeader}>{item.title}</Text>
+            {item.data.map((t) => renderItem(t))}
+          </View>
+        )}
+        ListEmptyComponent={
+          <Text style={styles.emptyText}>No transactions found.</Text>
+        }
+      />
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 10 },
   emptyText: { textAlign: "center", marginTop: 40 },
-  dropdownWrapper: { alignItems: "flex-start", marginBottom: 10 },
-
+  calendarContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingLeft: 10,
+    marginBottom: 10,
+  },
   dateHeader: {
     paddingVertical: 6,
     paddingHorizontal: 16,
