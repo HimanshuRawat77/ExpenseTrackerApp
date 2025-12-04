@@ -6,11 +6,13 @@ import {
   TextInput,
   SegmentedButtons,
   IconButton,
+  useTheme,
 } from "react-native-paper";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 const AddTransactionScreen = ({ navigation }) => {
+  const theme = useTheme();
   const [type, setType] = useState("expense");
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("");
@@ -41,11 +43,8 @@ const AddTransactionScreen = ({ navigation }) => {
       date: new Date().toISOString(),
     };
 
-    if (type === "expense") {
-      await saveToStorage("expenses", data);
-    } else {
-      await saveToStorage("income", data);
-    }
+    if (type === "expense") await saveToStorage("expenses", data);
+    else await saveToStorage("income", data);
 
     setAmount("");
     setCategory("");
@@ -55,19 +54,40 @@ const AddTransactionScreen = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.headerRow}>
+    <SafeAreaView
+      style={[
+        styles.safeArea,
+        { backgroundColor: theme.colors.background }, // ⭐ THEME BG
+      ]}
+    >
+      <View
+        style={[
+          styles.headerRow,
+          {
+            borderBottomColor: theme.colors.outline,
+            backgroundColor: theme.colors.elevation.level2,
+          },
+        ]}
+      >
         <IconButton
           icon="arrow-left"
           size={24}
           onPress={() => navigation.goBack()}
+          iconColor={theme.colors.onSurface} // ⭐ TEXT COLOR FIX
         />
 
-        <Text style={styles.headerTitle}>Add Transaction</Text>
+        <Text style={[styles.headerTitle, { color: theme.colors.onSurface }]}>
+          Add Transaction
+        </Text>
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.container,
+          { backgroundColor: theme.colors.background },
+        ]}
+      >
         <SegmentedButtons
           value={type}
           onValueChange={setType}
@@ -82,8 +102,9 @@ const AddTransactionScreen = ({ navigation }) => {
           label="Amount"
           value={amount}
           onChangeText={setAmount}
-          style={styles.input}
           keyboardType="numeric"
+          style={styles.input}
+          mode="outlined"
         />
         <TextInput
           label={
@@ -94,12 +115,15 @@ const AddTransactionScreen = ({ navigation }) => {
           value={category}
           onChangeText={setCategory}
           style={styles.input}
+          mode="outlined"
         />
         <TextInput
           label="Notes (Optional)"
           value={notes}
           onChangeText={setNotes}
           style={styles.input}
+          mode="outlined"
+          multiline
         />
 
         <Button mode="contained" onPress={handleSubmit} style={styles.button}>
@@ -113,7 +137,6 @@ const AddTransactionScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#fff",
   },
 
   headerRow: {
@@ -123,7 +146,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderBottomWidth: 1,
-    borderBottomColor: "#ddd",
   },
 
   headerTitle: {
@@ -143,7 +165,7 @@ const styles = StyleSheet.create({
   },
   button: {
     marginTop: 10,
-    paddingVertical: 5,
+    paddingVertical: 6,
   },
 });
 

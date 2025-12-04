@@ -31,13 +31,10 @@ const formatDate = (dateValue) => {
   return `${day}/${month}/${year}`;
 };
 
-const isSameDay = (d1, d2) => {
-  return (
-    d1.getDate() === d2.getDate() &&
-    d1.getMonth() === d2.getMonth() &&
-    d1.getFullYear() === d2.getFullYear()
-  );
-};
+const isSameDay = (d1, d2) =>
+  d1.getDate() === d2.getDate() &&
+  d1.getMonth() === d2.getMonth() &&
+  d1.getFullYear() === d2.getFullYear();
 
 const TransactionsScreen = () => {
   const theme = useTheme();
@@ -111,7 +108,9 @@ const TransactionsScreen = () => {
       <List.Item
         key={item.id}
         title={item.category}
+        titleStyle={{ color: theme.colors.onSurface }}
         description={item.notes}
+        descriptionStyle={{ color: theme.colors.onSurfaceVariant }}
         left={() => (
           <List.Icon
             icon={
@@ -128,22 +127,24 @@ const TransactionsScreen = () => {
             <IconButton
               icon="trash-can-outline"
               size={20}
+              iconColor={theme.colors.error}
               onPress={() => handleDelete(item)}
             />
           </View>
         )}
+        style={{ backgroundColor: theme.colors.surface, marginVertical: 2 }}
       />
     );
   };
 
   return (
-    <SafeAreaView style={{ flex: 1 }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
       <Button
         mode="text"
         icon="arrow-left"
         onPress={() => navigation.goBack()}
-        textColor="black"
-        style={{ alignSelf: "flex-start", marginLeft: 10 }}
+        textColor={theme.colors.onBackground}
+        style={{ alignSelf: "flex-start", marginLeft: 10, marginVertical: 10 }}
       >
         Back
       </Button>
@@ -152,6 +153,7 @@ const TransactionsScreen = () => {
         <IconButton
           icon="calendar"
           size={30}
+          iconColor={theme.colors.primary}
           onPress={() => setShowPicker(true)}
         />
 
@@ -159,7 +161,7 @@ const TransactionsScreen = () => {
           <Button
             mode="text"
             onPress={() => setSelectedDate(null)}
-            textColor="red"
+            textColor={theme.colors.error}
           >
             Clear Date
           </Button>
@@ -182,13 +184,28 @@ const TransactionsScreen = () => {
         keyExtractor={(item) => item.title}
         renderItem={({ item }) => (
           <View>
-            <Text style={styles.dateHeader}>{item.title}</Text>
+            <Text
+              style={[
+                styles.dateHeader,
+                {
+                  backgroundColor: theme.colors.surfaceVariant,
+                  color: theme.colors.onSurface,
+                },
+              ]}
+            >
+              {item.title}
+            </Text>
             {item.data.map((t) => renderItem(t))}
           </View>
         )}
         ListEmptyComponent={
-          <Text style={styles.emptyText}>No transactions found.</Text>
+          <Text
+            style={[styles.emptyText, { color: theme.colors.onBackground }]}
+          >
+            No transactions found.
+          </Text>
         }
+        contentContainerStyle={{ paddingBottom: 20 }}
       />
     </SafeAreaView>
   );
@@ -206,11 +223,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 16,
     fontWeight: "bold",
-    backgroundColor: "#E9E9E9",
     marginTop: 10,
   },
   row: { flexDirection: "row", alignItems: "center" },
-  amount: { fontSize: 16, fontWeight: "bold" },
+  amount: { fontSize: 16, fontWeight: "bold", marginRight: 8 },
 });
 
 export default TransactionsScreen;

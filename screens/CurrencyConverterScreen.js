@@ -67,14 +67,21 @@ const CurrencyConverterScreen = ({ navigation }) => {
   }, [fromCurrency, toCurrency]);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#f2f5fa" }}>
-      <View style={styles.headerRow}>
+    <SafeAreaView
+      style={[styles.safeArea, { backgroundColor: theme.colors.background }]}
+    >
+      <View
+        style={[styles.headerRow, { backgroundColor: theme.colors.primary }]}
+      >
         <IconButton
           icon="arrow-left"
           size={28}
+          iconColor={theme.colors.onPrimary}
           onPress={() => navigation.goBack()}
         />
-        <Text style={styles.headerTitle}>Currency Converter</Text>
+        <Text style={[styles.headerTitle, { color: theme.colors.onPrimary }]}>
+          Currency Converter
+        </Text>
         <View style={{ width: 40 }} />
       </View>
       <KeyboardAvoidingView
@@ -86,7 +93,9 @@ const CurrencyConverterScreen = ({ navigation }) => {
             🌍 Currency Converter
           </Text>
 
-          <Card style={styles.card}>
+          <Card
+            style={[styles.card, { backgroundColor: theme.colors.surface }]}
+          >
             <Card.Content>
               <TextInput
                 label="Amount"
@@ -94,9 +103,13 @@ const CurrencyConverterScreen = ({ navigation }) => {
                 keyboardType="numeric"
                 value={amount}
                 onChangeText={setAmount}
-                style={styles.input}
-                outlineColor="#ccc"
+                style={[
+                  styles.input,
+                  { backgroundColor: theme.colors.surface },
+                ]}
+                outlineColor={theme.colors.outline}
                 activeOutlineColor={theme.colors.primary}
+                textColor={theme.colors.onSurface}
               />
 
               <View style={styles.row}>
@@ -105,18 +118,34 @@ const CurrencyConverterScreen = ({ navigation }) => {
                   mode="outlined"
                   value={fromCurrency}
                   onChangeText={setFromCurrency}
-                  style={[styles.input, { flex: 1, marginRight: 5 }]}
-                  outlineColor="#ccc"
+                  style={[
+                    styles.input,
+                    {
+                      flex: 1,
+                      marginRight: 5,
+                      backgroundColor: theme.colors.surface,
+                    },
+                  ]}
+                  outlineColor={theme.colors.outline}
                   activeOutlineColor={theme.colors.primary}
+                  textColor={theme.colors.onSurface}
                 />
                 <TextInput
                   label="To"
                   mode="outlined"
                   value={toCurrency}
                   onChangeText={setToCurrency}
-                  style={[styles.input, { flex: 1, marginLeft: 5 }]}
-                  outlineColor="#ccc"
+                  style={[
+                    styles.input,
+                    {
+                      flex: 1,
+                      marginLeft: 5,
+                      backgroundColor: theme.colors.surface,
+                    },
+                  ]}
+                  outlineColor={theme.colors.outline}
                   activeOutlineColor={theme.colors.primary}
+                  textColor={theme.colors.onSurface}
                 />
               </View>
 
@@ -128,19 +157,32 @@ const CurrencyConverterScreen = ({ navigation }) => {
 
               <Button
                 mode="contained"
-                style={styles.button}
-                onPress={fetchConversion}
+                style={[
+                  styles.button,
+                  { backgroundColor: theme.colors.primary },
+                ]}
                 contentStyle={{ paddingVertical: 8 }}
+                onPress={fetchConversion}
               >
                 Convert
               </Button>
 
               {result && (
-                <View style={styles.resultBox}>
-                  <Text style={styles.resultText}>
+                <View
+                  style={[
+                    styles.resultBox,
+                    { backgroundColor: theme.dark ? "#1F1F1F" : "#eaf5ea" },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.resultText,
+                      { color: theme.colors.onSurface },
+                    ]}
+                  >
                     {amount} {fromCurrency} =
                   </Text>
-                  <Text style={styles.resultValue}>
+                  <Text style={[styles.resultValue, { color: "#27AE60" }]}>
                     {result} {toCurrency}
                   </Text>
                 </View>
@@ -154,18 +196,17 @@ const CurrencyConverterScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
+  safeArea: { flex: 1 },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 15,
     paddingVertical: 12,
-    backgroundColor: "#3F51B5",
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: "700",
-    color: "#fff",
   },
   container: {
     padding: 20,
@@ -181,11 +222,9 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     paddingHorizontal: 10,
     elevation: 6,
-    backgroundColor: "#fff",
   },
   input: {
     marginBottom: 15,
-    backgroundColor: "#f9f9f9",
   },
   row: {
     flexDirection: "row",
@@ -193,13 +232,11 @@ const styles = StyleSheet.create({
   button: {
     marginTop: 10,
     borderRadius: 12,
-    backgroundColor: "#3F51B5",
   },
   resultBox: {
     marginTop: 20,
     padding: 15,
     borderRadius: 12,
-    backgroundColor: "#eaf5ea",
     alignItems: "center",
   },
   resultText: {
@@ -210,7 +247,6 @@ const styles = StyleSheet.create({
   resultValue: {
     fontSize: 20,
     fontWeight: "700",
-    color: "#27AE60",
   },
 });
 
