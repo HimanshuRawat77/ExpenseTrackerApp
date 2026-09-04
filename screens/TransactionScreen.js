@@ -6,6 +6,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { AppHeader, CategoryIcon } from "../src/components";
+import {
+  deleteTransactionInBackend,
+  getTransactionsFromBackend,
+} from "../src/api/transactionApi";
+import { invalidateAIInsightCache } from "../src/api/aiApi";
 import { brand, semantic } from "../src/theme/colors";
 import { spacing } from "../src/theme";
 
@@ -60,11 +65,26 @@ const TransactionsScreen = () => {
       const i = await AsyncStorage.getItem("income");
       const c = await AsyncStorage.getItem("userCurrency");
 
-      setExpenses(e ? JSON.parse(e) : []);
-      setIncome(i ? JSON.parse(i) : []);
+      let currentExpenses = e ? JSON.parse(e) : [];
+      let currentIncome = i ? JSON.parse(i) : [];
+
+      try {
+        const mongoTransactions = await getTransactionsFromBackend();
+        if (mongoTransactions && Array.isArray(mongoTransactions) && mongoTransactions.length > 0) {
+          currentExpenses = mongoTransactions.filter((t) => t.type === "expense");
+          currentIncome = mongoTransactions.filter((t) => t.type === "income");
+          await AsyncStorage.setItem("expenses", JSON.stringify(currentExpenses));
+          await AsyncStorage.setItem("income", JSON.stringify(currentIncome));
+        }
+      } catch (err) {
+        // Handled silently
+      }
+
+      setExpenses(currentExpenses);
+      setIncome(currentIncome);
       if (c) setCurrency(c);
     } catch (err) {
-      console.warn("Failed to load transactions:", err);
+      // Handled silently
     }
   };
 
@@ -75,15 +95,37 @@ const TransactionsScreen = () => {
   }, [navigation]);
 
   const deleteItem = async (item) => {
+    const mongoId = item._id || (item.id && item.id.length === 24 ? item.id : null);
+
+    // 1. Delete from MongoDB Atlas if it exists remotely
+    if (mongoId) {
+      deleteTransactionInBackend(mongoId);
+    }
+
+    // 2. Delete from local React state and AsyncStorage
+    const targetId = item._id || item.id;
     if (item.type === "expense") {
-      const updated = expenses.filter((x) => x.id !== item.id);
+      const updated = expenses.filter(
+        (x) =>
+          x.id !== targetId &&
+          x._id !== targetId &&
+          (!mongoId || (x._id !== mongoId && x.id !== mongoId))
+      );
       setExpenses(updated);
       await AsyncStorage.setItem("expenses", JSON.stringify(updated));
     } else {
-      const updated = income.filter((x) => x.id !== item.id);
+      const updated = income.filter(
+        (x) =>
+          x.id !== targetId &&
+          x._id !== targetId &&
+          (!mongoId || (x._id !== mongoId && x.id !== mongoId))
+      );
       setIncome(updated);
       await AsyncStorage.setItem("income", JSON.stringify(updated));
     }
+
+    // 3. Recalculate AI insight
+    invalidateAIInsightCache();
   };
 
   const handleDelete = (item) =>
@@ -121,14 +163,16 @@ const TransactionsScreen = () => {
     }));
   }, [allTransactions]);
 
-  const renderItem = (item) => {
+  const renderItem = (item, index = 0) => {
     const isIncome = item.type === "income";
     const amountColor = isIncome ? semantic.income : semantic.expense;
     const sign = isIncome ? "+" : "-";
+    const itemKey =
+      item._id || item.id || `tx_${index}_${item.date || ""}_${item.amount || ""}`;
 
     return (
       <View
-        key={item.id}
+        key={itemKey}
         style={[
           styles.transactionItem,
           {
@@ -224,17 +268,17 @@ const TransactionsScreen = () => {
 
       <FlatList
         data={groupedData}
-        keyExtractor={(item) => item.title}
+        keyExtractor={(item, index) => `${item.title || "sec"}_${index}`}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => (
+        renderItem={({ item, index: secIndex }) => (
           <View style={styles.sectionContainer}>
             <View style={styles.sectionHeaderRow}>
               <Text style={[styles.sectionDateText, { color: theme.colors.onSurfaceVariant }]}>
                 {item.title}
               </Text>
             </View>
-            {item.data.map((t) => renderItem(t))}
+            {item.data.map((t, tIndex) => renderItem(t, `${secIndex}_${tIndex}`))}
           </View>
         )}
         ListEmptyComponent={

@@ -6,5 +6,6 @@ const auth = require('../middleware/auth');
 router.get('/summary', auth, dashboardController.getSummary);
 router.get('/safe-to-spend', auth, dashboardController.getSafeToSpend);
 router.get('/trends', auth, dashboardController.getTrends);
+router.get('/insights', auth, dashboardController.getInsights);
 
 module.exports = router;

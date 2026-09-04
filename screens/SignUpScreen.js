@@ -18,7 +18,6 @@ const SignUpScreen = ({ navigation, onSignUp }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [currency, setCurrency] = useState("INR");
-  const [budget, setBudget] = useState("");
   const [loading, setLoading] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -29,7 +28,7 @@ const SignUpScreen = ({ navigation, onSignUp }) => {
     /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
 
   const handleSignUpPress = async () => {
-    if (!name.trim() || !email.trim() || !password.trim() || !budget.trim()) {
+    if (!name.trim() || !email.trim() || !password.trim()) {
       Alert.alert("Error", "Please fill in all the required fields.");
       return;
     }
@@ -50,10 +49,9 @@ const SignUpScreen = ({ navigation, onSignUp }) => {
     setLoading(true);
 
     try {
-      await onSignUp(name.trim(), email.trim(), password, currency, budget.trim());
+      await onSignUp(name.trim(), email.trim(), password, currency, "0");
       await AsyncStorage.setItem("userCurrency", currency);
     } catch (error) {
-      console.error("SignUp error:", error);
       Alert.alert("Error", "Something went wrong while signing up.");
     } finally {
       setLoading(false);
@@ -181,19 +179,6 @@ const SignUpScreen = ({ navigation, onSignUp }) => {
             }}
           />
         </Menu>
-
-        <TextInput
-          label="Monthly Budget Target"
-          value={budget}
-          onChangeText={setBudget}
-          style={styles.input}
-          mode="outlined"
-          keyboardType="numeric"
-          outlineColor={theme.colors.outline}
-          activeOutlineColor={brand.emerald}
-          textColor={theme.colors.onSurface}
-          left={<TextInput.Icon icon="cash-multiple" color={theme.colors.onSurfaceVariant} />}
-        />
 
         <Button
           mode="contained"

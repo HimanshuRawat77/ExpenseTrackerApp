@@ -177,3 +177,90 @@ exports.getTrends = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.getInsights = async (req, res, next) => {
+  try {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    const startOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const endOfPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+    const userId = new mongoose.Types.ObjectId(req.userId);
+
+    // Current month totals
+    const currentTotals = await Transaction.aggregate([
+      { $match: { userId, date: { $gte: startOfMonth, $lte: endOfMonth } } },
+      { $group: { _id: "$type", total: { $sum: "$amount" } } }
+    ]);
+
+    let income = 0;
+    let expenses = 0;
+    currentTotals.forEach(t => {
+      if (t._id === 'income') income = t.total;
+      if (t._id === 'expense') expenses = t.total;
+    });
+
+    // Previous month expenses
+    const prevTotals = await Transaction.aggregate([
+      { $match: { userId, type: 'expense', date: { $gte: startOfPrevMonth, $lte: endOfPrevMonth } } },
+      { $group: { _id: null, total: { $sum: "$amount" } } }
+    ]);
+    const prevExpenses = prevTotals.length > 0 ? prevTotals[0].total : 0;
+
+    // Category breakdown
+    const categories = await Transaction.aggregate([
+      { $match: { userId, type: 'expense', date: { $gte: startOfMonth, $lte: endOfMonth } } },
+      { $group: { _id: "$category", amount: { $sum: "$amount" } } },
+      { $sort: { amount: -1 } }
+    ]);
+
+    // Generate real-data deterministic insight
+    let insight = "Track your daily expenses to see personalized financial insights here.";
+    let type = "spending_trend";
+    let recommendation = "Log every expense as it happens to keep your records accurate.";
+    let severity = "info";
+
+    if (expenses > 0 && categories.length > 0) {
+      const topCat = categories[0];
+      const topCatShare = Math.round((topCat.amount / expenses) * 100);
+
+      if (prevExpenses > 0) {
+        const momDiff = Math.round(((expenses - prevExpenses) / prevExpenses) * 100);
+        if (momDiff > 10) {
+          insight = `Your expenses are ${momDiff}% higher this month compared to last month.`;
+          recommendation = `${topCat._id} makes up ${topCatShare}% of your spending. Review discretionary purchases in this category.`;
+          type = "budget_warning";
+          severity = "warning";
+        } else if (momDiff < -10) {
+          insight = `You've spent ${Math.abs(momDiff)}% less than last month. Great job pacing your spending!`;
+          recommendation = "You're on track to increase your monthly savings rate.";
+          type = "saving_progress";
+          severity = "success";
+        } else {
+          insight = `${topCat._id} is your largest expense category at ${topCatShare}% of total spending.`;
+          recommendation = `You've spent ₹${topCat.amount.toLocaleString('en-IN')} on ${topCat._id} this month.`;
+          type = "category_spending";
+        }
+      } else {
+        insight = `${topCat._id} accounts for ${topCatShare}% of your total spending this month.`;
+        recommendation = `Total spent so far: ₹${expenses.toLocaleString('en-IN')}.`;
+        type = "category_spending";
+      }
+    } else if (income > 0 && expenses === 0) {
+      insight = "You have recorded income and zero expenses so far this month.";
+      recommendation = "Set up your monthly budget to allocate your funds wisely.";
+      type = "saving_progress";
+      severity = "success";
+    }
+
+    return apiResponse.success(res, 200, 'AI insights generated', {
+      insight,
+      recommendation,
+      type,
+      severity,
+      generatedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+};

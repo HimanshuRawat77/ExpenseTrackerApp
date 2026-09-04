@@ -18,6 +18,8 @@ import {
   navDarkTheme,
 } from "./src/theme";
 import { AppIcon } from "./src/components";
+import { loginToBackend, registerToBackend } from "./src/api/authApi";
+import { syncLocalTransactionsToBackend } from "./src/api/transactionApi";
 
 const Stack = createNativeStackNavigator();
 
@@ -33,10 +35,16 @@ export default function App() {
       try {
         const savedTheme = await AsyncStorage.getItem("isDarkMode");
         if (savedTheme === "true") setIsDarkMode(true);
+
+        const savedUser = await AsyncStorage.getItem("currentUser");
+        if (savedUser) {
+          const parsedUser = JSON.parse(savedUser);
+          setUser(parsedUser);
+        }
       } catch (err) {
-        console.warn("Error loading preferences:", err);
+        // Silently handled
       } finally {
-        setTimeout(() => setIsLoading(false), 1200);
+        setTimeout(() => setIsLoading(false), 900);
       }
     };
 
@@ -50,38 +58,152 @@ export default function App() {
   };
 
   const handleLogin = async (email, password) => {
-    const data = await AsyncStorage.getItem(`user_${email.toLowerCase()}`);
-    if (!data) return alert("User not found. Please sign up.");
+    // 1. Authenticate with MongoDB backend
+    const backendResult = await loginToBackend(email, password);
 
-    const userData = JSON.parse(data);
-    if (userData.password !== password) return alert("Incorrect password");
+    if (backendResult.success && backendResult.user) {
+      const mongoUser = backendResult.user;
+      console.log("=========================================");
+      console.log("🔥 USER FROM MONGODB (ATLAS):", mongoUser);
+      console.log("=========================================");
 
-    await AsyncStorage.setItem("currentUser", JSON.stringify(userData));
-    setUser(userData);
+      const userData = {
+        ...mongoUser,
+        id: mongoUser._id || mongoUser.id,
+        name: mongoUser.name,
+        email: mongoUser.email,
+        currency: mongoUser.preferredCurrency || "INR",
+        budget: String(mongoUser.monthlyBudget || "0"),
+      };
+
+      await AsyncStorage.setItem("currentUser", JSON.stringify(userData));
+      if (userData.currency) {
+        await AsyncStorage.setItem("userCurrency", userData.currency);
+      }
+      setUser(userData);
+
+      // Auto-sync any unsynced local transactions to MongoDB
+      syncLocalTransactionsToBackend();
+      return;
+    }
+
+    // 2. If user exists in local storage, migrate/register them to MongoDB
+    const localData = await AsyncStorage.getItem(`user_${email.toLowerCase()}`);
+    if (localData) {
+      const localUser = JSON.parse(localData);
+      if (localUser.password === password) {
+        console.log("🔄 Found local account. Registering user into MongoDB Atlas...");
+        const registerResult = await registerToBackend({
+          name: localUser.name || "User",
+          email: localUser.email,
+          password: localUser.password,
+          preferredCurrency: localUser.currency || "INR",
+          monthlyBudget: localUser.budget || 0,
+        });
+
+        if (registerResult.success && registerResult.user) {
+          const mongoUser = registerResult.user;
+          console.log("=========================================");
+          console.log("🔥 USER FROM MONGODB (ATLAS):", mongoUser);
+          console.log("=========================================");
+
+          const userData = {
+            ...mongoUser,
+            id: mongoUser._id || mongoUser.id,
+            name: mongoUser.name,
+            email: mongoUser.email,
+            currency: mongoUser.preferredCurrency || "INR",
+            budget: String(mongoUser.monthlyBudget || "0"),
+          };
+
+          await AsyncStorage.setItem("currentUser", JSON.stringify(userData));
+          if (userData.currency) {
+            await AsyncStorage.setItem("userCurrency", userData.currency);
+          }
+          setUser(userData);
+
+          // Auto-sync any local transactions to MongoDB
+          syncLocalTransactionsToBackend();
+          return;
+        }
+
+        // If backend was unreachable, fallback to local storage
+        console.log("📦 Loaded offline user from local storage:", localUser);
+        await AsyncStorage.setItem("currentUser", JSON.stringify(localUser));
+        setUser(localUser);
+        return;
+      } else {
+        return alert("Incorrect password");
+      }
+    }
+
+    // 3. User not found anywhere
+    alert(backendResult.error || "User not found. Please sign up.");
   };
 
   const handleSignUp = async (name, email, password, currency = "INR", budget = "0") => {
-    const check = await AsyncStorage.getItem(`user_${email.toLowerCase()}`);
-    if (check) return alert("Email already exists");
-
-    const newUser = {
+    // 1. Register with MongoDB backend
+    const backendResult = await registerToBackend({
       name,
-      email: email.toLowerCase(),
+      email,
       password,
-      currency,
-      budget,
-    };
+      preferredCurrency: currency,
+      monthlyBudget: budget,
+    });
 
-    await AsyncStorage.setItem(
-      `user_${email.toLowerCase()}`,
-      JSON.stringify(newUser)
-    );
-    await AsyncStorage.setItem("currentUser", JSON.stringify(newUser));
-    setUser(newUser);
+    if (backendResult.success && backendResult.user) {
+      const mongoUser = backendResult.user;
+      console.log("=========================================");
+      console.log("🔥 REGISTERED USER IN MONGODB (ATLAS):", mongoUser);
+      console.log("=========================================");
+
+      const userData = {
+        ...mongoUser,
+        id: mongoUser._id || mongoUser.id,
+        name: mongoUser.name,
+        email: mongoUser.email,
+        currency: mongoUser.preferredCurrency || currency,
+        budget: String(mongoUser.monthlyBudget || budget),
+      };
+
+      await AsyncStorage.setItem(`user_${email.toLowerCase()}`, JSON.stringify({ ...userData, password }));
+      await AsyncStorage.setItem("currentUser", JSON.stringify(userData));
+      await AsyncStorage.setItem("userCurrency", userData.currency);
+      setUser(userData);
+      return;
+    }
+
+    // 2. If network error, fallback to local storage
+    if (backendResult.isNetworkError) {
+      console.warn("Backend unavailable during registration. Saving locally.");
+      const check = await AsyncStorage.getItem(`user_${email.toLowerCase()}`);
+      if (check) return alert("Email already exists locally");
+
+      const newUser = {
+        name,
+        email: email.toLowerCase(),
+        password,
+        currency,
+        budget,
+      };
+
+      await AsyncStorage.setItem(
+        `user_${email.toLowerCase()}`,
+        JSON.stringify(newUser)
+      );
+      await AsyncStorage.setItem("currentUser", JSON.stringify(newUser));
+      setUser(newUser);
+      return;
+    }
+
+    // 3. Backend returned error (e.g. email exists or validation failed)
+    alert(backendResult.error || "Sign up failed. Please try again.");
   };
 
   const handleLogout = async () => {
     await AsyncStorage.removeItem("currentUser");
+    await AsyncStorage.removeItem("authToken");
+    await AsyncStorage.removeItem("refreshToken");
     setUser(null);
   };
 

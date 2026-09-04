@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { View, StyleSheet, ScrollView, TouchableOpacity, Alert } from "react-native";
 import {
   Button,
@@ -13,19 +13,72 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
-import { AppHeader } from "../src/components";
+import { AppHeader, AppIcon } from "../src/components";
+import { invalidateAIInsightCache } from "../src/api/aiApi";
+import { createTransactionInBackend } from "../src/api/transactionApi";
 import { brand, semantic } from "../src/theme/colors";
 import { spacing } from "../src/theme";
 
-const AddTransactionScreen = ({ navigation }) => {
+const AddTransactionScreen = ({ navigation, route }) => {
   const theme = useTheme();
+  const [balance, setBalance] = useState(route?.params?.balance ?? null);
+  const [isBalanceLoaded, setIsBalanceLoaded] = useState(
+    route?.params?.balance !== undefined
+  );
   const [type, setType] = useState("expense");
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("");
   const [notes, setNotes] = useState("");
   const [isScanning, setIsScanning] = useState(false);
 
+  useEffect(() => {
+    const checkBalance = async () => {
+      try {
+        const savedExpenses = await AsyncStorage.getItem("expenses");
+        const savedIncome = await AsyncStorage.getItem("income");
+        const parsedExpenses = savedExpenses ? JSON.parse(savedExpenses) : [];
+        const parsedIncome = savedIncome ? JSON.parse(savedIncome) : [];
+
+        const totalInc = parsedIncome.reduce(
+          (sum, i) => sum + (Number(i.amount) || 0),
+          0
+        );
+        const totalExp = parsedExpenses.reduce(
+          (sum, e) => sum + (Number(e.amount) || 0),
+          0
+        );
+        const currentBal = totalInc - totalExp;
+
+        setBalance(currentBal);
+        setIsBalanceLoaded(true);
+
+        if (currentBal <= 0) {
+          setType("income");
+          Alert.alert("Insufficient Balance", "You does not have enough money.");
+        }
+      } catch (err) {
+        setIsBalanceLoaded(true);
+      }
+    };
+
+    if (route?.params?.balance !== undefined) {
+      if (route.params.balance <= 0) {
+        setType("income");
+        Alert.alert("Insufficient Balance", "You does not have enough money.");
+      }
+    } else {
+      checkBalance();
+    }
+  }, [route?.params?.balance]);
+
+  const isZeroBalance = isBalanceLoaded && balance !== null && balance <= 0;
+
   const scanReceipt = async (scanType = "receipt") => {
+    if (isZeroBalance) {
+      Alert.alert("Insufficient Balance", "You does not have enough money.");
+      return;
+    }
+
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
     if (permissionResult.granted === false) {
@@ -66,11 +119,16 @@ const AddTransactionScreen = ({ navigation }) => {
       const updated = [...parsed, newItem];
       await AsyncStorage.setItem(key, JSON.stringify(updated));
     } catch (error) {
-      console.error("Storage error:", error);
+      // Handled silently
     }
   };
 
   const handleSubmit = async () => {
+    if (type === "expense" && isZeroBalance) {
+      Alert.alert("Insufficient Balance", "You does not have enough money.");
+      return;
+    }
+
     if (!amount.trim() || !category.trim()) {
       Alert.alert("Missing Fields", "Please enter an amount and category.");
       return;
@@ -88,10 +146,32 @@ const AddTransactionScreen = ({ navigation }) => {
       category: category.trim(),
       notes: notes.trim(),
       date: new Date().toISOString(),
+      type,
     };
 
+    // 1. Persist directly to MongoDB Atlas backend
+    try {
+      const savedMongo = await createTransactionInBackend({
+        type,
+        amount: numericAmount,
+        category: category.trim(),
+        notes: notes.trim(),
+        date: data.date,
+      });
+
+      if (savedMongo && savedMongo._id) {
+        data._id = savedMongo._id;
+        data.syncedToMongo = true;
+      }
+    } catch (e) {
+      // Handled silently, fallback to local storage
+    }
+
+    // 2. Persist locally for instant offline rendering
     if (type === "expense") await saveToStorage("expenses", data);
     else await saveToStorage("income", data);
+
+    await invalidateAIInsightCache();
 
     setAmount("");
     setCategory("");
@@ -122,14 +202,25 @@ const AddTransactionScreen = ({ navigation }) => {
         {/* Type Toggle */}
         <SegmentedButtons
           value={type}
-          onValueChange={setType}
+          onValueChange={(val) => {
+            if (val === "expense" && isZeroBalance) {
+              Alert.alert("Insufficient Balance", "You does not have enough money.");
+              return;
+            }
+            setType(val);
+          }}
           buttons={[
             {
               value: "expense",
               label: "Expense",
               icon: "arrow-down-circle-outline",
+              disabled: isZeroBalance,
               checkedColor: "#FFFFFF",
-              style: type === "expense" ? { backgroundColor: semantic.expense } : undefined,
+              style: isZeroBalance
+                ? { opacity: 0.35 }
+                : type === "expense"
+                ? { backgroundColor: semantic.expense }
+                : undefined,
             },
             {
               value: "income",
@@ -141,6 +232,24 @@ const AddTransactionScreen = ({ navigation }) => {
           ]}
           style={styles.segmented}
         />
+
+        {/* Zero Balance Notification Banner */}
+        {isZeroBalance && (
+          <View
+            style={[
+              styles.noticeBanner,
+              {
+                backgroundColor: "rgba(239, 68, 68, 0.12)",
+                borderColor: semantic.expense,
+              },
+            ]}
+          >
+            <AppIcon name="alert-circle" size={20} color={semantic.expense} />
+            <Text style={[styles.noticeText, { color: semantic.expense }]}>
+              You does not have enough money.
+            </Text>
+          </View>
+        )}
 
         {/* Quick Scan Action Cards (Using Vector Icons, No Emoji) */}
         <View style={styles.scanCardsRow}>
@@ -274,7 +383,21 @@ const styles = StyleSheet.create({
     paddingBottom: 60,
   },
   segmented: {
+    marginBottom: spacing.md,
+  },
+  noticeBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: spacing.md,
+    borderRadius: 12,
+    borderWidth: 1,
     marginBottom: spacing.lg,
+  },
+  noticeText: {
+    marginLeft: spacing.sm,
+    fontSize: 13,
+    fontWeight: "600",
+    flex: 1,
   },
   scanCardsRow: {
     flexDirection: "row",

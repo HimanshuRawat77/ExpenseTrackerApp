@@ -58,6 +58,7 @@ export default function BottomTabs({
         children={(props) => (
           <DashboardScreen
             {...props}
+            user={user}
             income={income}
             expenses={expenses}
             onLogout={onLogout}
@@ -115,7 +116,18 @@ export default function BottomTabs({
               activeOpacity={0.8}
               accessibilityLabel="Add transaction"
               accessibilityRole="button"
-              onPress={() => navigation.navigate("AddTransaction")}
+              onPress={() => {
+                const totalInc = (income || []).reduce(
+                  (sum, i) => sum + (Number(i.amount) || 0),
+                  0
+                );
+                const totalExp = (expenses || []).reduce(
+                  (sum, e) => sum + (Number(e.amount) || 0),
+                  0
+                );
+                const bal = totalInc - totalExp;
+                navigation.navigate("AddTransaction", { balance: bal });
+              }}
             />
           ),
         })}
