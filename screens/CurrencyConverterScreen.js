@@ -13,9 +13,12 @@ import {
   useTheme,
   Card,
   HelperText,
-  IconButton,
+  Icon,
 } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { AppHeader } from "../src/components";
+import { brand, semantic } from "../src/theme/colors";
+import { spacing } from "../src/theme";
 
 const CurrencyConverterScreen = ({ navigation }) => {
   const theme = useTheme();
@@ -24,41 +27,32 @@ const CurrencyConverterScreen = ({ navigation }) => {
   const [toCurrency, setToCurrency] = useState("INR");
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
-
-  const currencyList = [
-    "USD",
-    "INR",
-    "EUR",
-    "GBP",
-    "JPY",
-    "CAD",
-    "AUD",
-    "CHF",
-    "CNY",
-    "NZD",
-  ];
+  const [loading, setLoading] = useState(false);
 
   const fetchConversion = async () => {
-    if (!amount || isNaN(amount)) {
-      setError("Please enter a valid amount");
+    if (!amount || isNaN(amount) || parseFloat(amount) <= 0) {
+      setError("Please enter a valid positive number");
       return;
     }
 
     setError("");
+    setLoading(true);
     try {
       const response = await fetch(
-        `https://open.er-api.com/v6/latest/${fromCurrency}`
+        `https://open.er-api.com/v6/latest/${fromCurrency.toUpperCase()}`
       );
       const data = await response.json();
-      if (data.result === "success" && data.rates[toCurrency]) {
-        const rate = data.rates[toCurrency];
+      if (data.result === "success" && data.rates[toCurrency.toUpperCase()]) {
+        const rate = data.rates[toCurrency.toUpperCase()];
         setResult((parseFloat(amount) * rate).toFixed(2));
       } else {
-        setError("Unable to fetch currency rate");
+        setError("Unable to fetch exchange rate for this pair");
       }
     } catch (err) {
       console.error(err);
-      setError("Network error. Try again later.");
+      setError("Network error. Please check connection.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -69,126 +63,122 @@ const CurrencyConverterScreen = ({ navigation }) => {
   return (
     <SafeAreaView
       style={[styles.safeArea, { backgroundColor: theme.colors.background }]}
+      edges={["top", "left", "right"]}
     >
-      <View
-        style={[styles.headerRow, { backgroundColor: theme.colors.primary }]}
-      >
-        <IconButton
-          icon="arrow-left"
-          size={28}
-          iconColor={theme.colors.onPrimary}
-          onPress={() => navigation.goBack()}
-        />
-        <Text style={[styles.headerTitle, { color: theme.colors.onPrimary }]}>
-          Currency Converter
-        </Text>
-        <View style={{ width: 40 }} />
-      </View>
+      <AppHeader
+        title="Currency Converter"
+        showBack={navigation.canGoBack()}
+        onBack={() => navigation.goBack()}
+      />
+
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <ScrollView contentContainerStyle={styles.container}>
-          <Text style={[styles.title, { color: theme.colors.primary }]}>
-            🌍 Currency Converter
-          </Text>
+        <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+          {/* Header Badge */}
+          <View style={styles.badgeContainer}>
+            <View style={[styles.iconCircle, { backgroundColor: "rgba(16, 185, 129, 0.15)" }]}>
+              <Icon source="swap-horizontal" size={28} color={brand.emerald} />
+            </View>
+            <Text style={[styles.sectionSubtitle, { color: theme.colors.onSurfaceVariant }]}>
+              Real-time foreign exchange rates
+            </Text>
+          </View>
 
-          <Card
-            style={[styles.card, { backgroundColor: theme.colors.surface }]}
+          <View
+            style={[
+              styles.card,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.outline,
+              },
+            ]}
           >
-            <Card.Content>
+            <TextInput
+              label="Amount"
+              mode="outlined"
+              keyboardType="numeric"
+              value={amount}
+              onChangeText={setAmount}
+              style={styles.input}
+              outlineColor={theme.colors.outline}
+              activeOutlineColor={brand.emerald}
+              textColor={theme.colors.onSurface}
+              left={<TextInput.Icon icon="cash" color={theme.colors.onSurfaceVariant} />}
+            />
+
+            <View style={styles.row}>
               <TextInput
-                label="Amount"
+                label="From"
                 mode="outlined"
-                keyboardType="numeric"
-                value={amount}
-                onChangeText={setAmount}
-                style={[
-                  styles.input,
-                  { backgroundColor: theme.colors.surface },
-                ]}
+                value={fromCurrency}
+                onChangeText={(val) => setFromCurrency(val.toUpperCase())}
+                style={[styles.input, styles.currencyInput, { marginRight: spacing.xs }]}
                 outlineColor={theme.colors.outline}
-                activeOutlineColor={theme.colors.primary}
+                activeOutlineColor={brand.emerald}
                 textColor={theme.colors.onSurface}
+                autoCapitalize="characters"
+                maxLength={4}
               />
+              <TextInput
+                label="To"
+                mode="outlined"
+                value={toCurrency}
+                onChangeText={(val) => setToCurrency(val.toUpperCase())}
+                style={[styles.input, styles.currencyInput, { marginLeft: spacing.xs }]}
+                outlineColor={theme.colors.outline}
+                activeOutlineColor={brand.emerald}
+                textColor={theme.colors.onSurface}
+                autoCapitalize="characters"
+                maxLength={4}
+              />
+            </View>
 
-              <View style={styles.row}>
-                <TextInput
-                  label="From"
-                  mode="outlined"
-                  value={fromCurrency}
-                  onChangeText={setFromCurrency}
-                  style={[
-                    styles.input,
-                    {
-                      flex: 1,
-                      marginRight: 5,
-                      backgroundColor: theme.colors.surface,
-                    },
-                  ]}
-                  outlineColor={theme.colors.outline}
-                  activeOutlineColor={theme.colors.primary}
-                  textColor={theme.colors.onSurface}
-                />
-                <TextInput
-                  label="To"
-                  mode="outlined"
-                  value={toCurrency}
-                  onChangeText={setToCurrency}
-                  style={[
-                    styles.input,
-                    {
-                      flex: 1,
-                      marginLeft: 5,
-                      backgroundColor: theme.colors.surface,
-                    },
-                  ]}
-                  outlineColor={theme.colors.outline}
-                  activeOutlineColor={theme.colors.primary}
-                  textColor={theme.colors.onSurface}
-                />
-              </View>
+            {error ? (
+              <HelperText type="error" visible={true} style={styles.errorText}>
+                {error}
+              </HelperText>
+            ) : null}
 
-              {error ? (
-                <HelperText type="error" visible={true}>
-                  {error}
-                </HelperText>
-              ) : null}
+            <Button
+              mode="contained"
+              style={styles.button}
+              buttonColor={brand.emerald}
+              textColor="#FFFFFF"
+              loading={loading}
+              contentStyle={styles.buttonContent}
+              onPress={fetchConversion}
+              accessibilityLabel="Convert currency"
+              accessibilityRole="button"
+            >
+              Convert
+            </Button>
 
-              <Button
-                mode="contained"
+            {result && (
+              <View
                 style={[
-                  styles.button,
-                  { backgroundColor: theme.colors.primary },
+                  styles.resultBox,
+                  {
+                    backgroundColor: theme.dark ? "#1E293B" : "#F1F5F9",
+                    borderColor: theme.colors.outline,
+                  },
                 ]}
-                contentStyle={{ paddingVertical: 8 }}
-                onPress={fetchConversion}
               >
-                Convert
-              </Button>
-
-              {result && (
-                <View
+                <Text
                   style={[
-                    styles.resultBox,
-                    { backgroundColor: theme.dark ? "#1F1F1F" : "#eaf5ea" },
+                    styles.resultLabel,
+                    { color: theme.colors.onSurfaceVariant },
                   ]}
                 >
-                  <Text
-                    style={[
-                      styles.resultText,
-                      { color: theme.colors.onSurface },
-                    ]}
-                  >
-                    {amount} {fromCurrency} =
-                  </Text>
-                  <Text style={[styles.resultValue, { color: "#27AE60" }]}>
-                    {result} {toCurrency}
-                  </Text>
-                </View>
-              )}
-            </Card.Content>
-          </Card>
+                  {amount} {fromCurrency} =
+                </Text>
+                <Text style={[styles.resultValue, { color: brand.emerald }]}>
+                  {result} {toCurrency}
+                </Text>
+              </View>
+            )}
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -197,55 +187,65 @@ const CurrencyConverterScreen = ({ navigation }) => {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 15,
-    paddingVertical: 12,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-  },
   container: {
-    padding: 20,
+    padding: spacing.lg,
   },
-  title: {
-    textAlign: "center",
-    fontSize: 24,
-    fontWeight: "700",
-    marginBottom: 25,
+  badgeContainer: {
+    alignItems: "center",
+    marginVertical: spacing.md,
+  },
+  iconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: spacing.xs,
+  },
+  sectionSubtitle: {
+    fontSize: 13,
   },
   card: {
     borderRadius: 16,
-    paddingVertical: 15,
-    paddingHorizontal: 10,
-    elevation: 6,
+    borderWidth: 1,
+    padding: spacing.lg,
+    marginTop: spacing.sm,
   },
   input: {
-    marginBottom: 15,
+    marginBottom: spacing.md,
+    backgroundColor: "transparent",
   },
   row: {
     flexDirection: "row",
   },
+  currencyInput: {
+    flex: 1,
+  },
+  errorText: {
+    marginTop: -8,
+    marginBottom: spacing.xs,
+  },
   button: {
-    marginTop: 10,
+    marginTop: spacing.xs,
     borderRadius: 12,
+  },
+  buttonContent: {
+    height: 48,
   },
   resultBox: {
-    marginTop: 20,
-    padding: 15,
+    marginTop: spacing.lg,
+    padding: spacing.lg,
     borderRadius: 12,
+    borderWidth: 1,
     alignItems: "center",
   },
-  resultText: {
-    fontSize: 16,
+  resultLabel: {
+    fontSize: 14,
     fontWeight: "500",
-    marginBottom: 5,
+    marginBottom: 4,
   },
   resultValue: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: "700",
   },
 });

@@ -1,23 +1,29 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { View, FlatList, StyleSheet, Alert } from "react-native";
-import { Text, List, useTheme, IconButton, Button } from "react-native-paper";
+import { View, FlatList, StyleSheet, Alert, TouchableOpacity } from "react-native";
+import { Text, useTheme, IconButton, Button, Icon } from "react-native-paper";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { AppHeader, CategoryIcon } from "../src/components";
+import { brand, semantic } from "../src/theme/colors";
+import { spacing } from "../src/theme";
+
 const parseDate = (value) => {
   if (!value) return new Date();
   let d = new Date(value);
   if (!isNaN(d)) return d;
 
-  if (value.includes("/")) {
-    const [dd, mm, yyyy] = value.split("/");
-    return new Date(`${yyyy}-${mm}-${dd}`);
-  }
+  if (typeof value === "string") {
+    if (value.includes("/")) {
+      const [dd, mm, yyyy] = value.split("/");
+      return new Date(`${yyyy}-${mm}-${dd}`);
+    }
 
-  if (value.includes("-")) {
-    const [dd, mm, yyyy] = value.split("-");
-    return new Date(`${yyyy}-${mm}-${dd}`);
+    if (value.includes("-")) {
+      const [dd, mm, yyyy] = value.split("-");
+      return new Date(`${yyyy}-${mm}-${dd}`);
+    }
   }
 
   return new Date();
@@ -42,21 +48,31 @@ const TransactionsScreen = () => {
 
   const [expenses, setExpenses] = useState([]);
   const [income, setIncome] = useState([]);
+  const [currency, setCurrency] = useState("INR");
   const [selectedDate, setSelectedDate] = useState(null);
   const [showPicker, setShowPicker] = useState(false);
 
-  const loadTransactions = async () => {
-    const e = await AsyncStorage.getItem("expenses");
-    const i = await AsyncStorage.getItem("income");
+  const currencySymbol = { INR: "₹", USD: "$", EUR: "€", GBP: "£" }[currency] || "₹";
 
-    setExpenses(e ? JSON.parse(e) : []);
-    setIncome(i ? JSON.parse(i) : []);
+  const loadTransactions = async () => {
+    try {
+      const e = await AsyncStorage.getItem("expenses");
+      const i = await AsyncStorage.getItem("income");
+      const c = await AsyncStorage.getItem("userCurrency");
+
+      setExpenses(e ? JSON.parse(e) : []);
+      setIncome(i ? JSON.parse(i) : []);
+      if (c) setCurrency(c);
+    } catch (err) {
+      console.warn("Failed to load transactions:", err);
+    }
   };
 
   useEffect(() => {
+    loadTransactions();
     const unsub = navigation.addListener("focus", loadTransactions);
     return unsub;
-  }, []);
+  }, [navigation]);
 
   const deleteItem = async (item) => {
     if (item.type === "expense") {
@@ -71,10 +87,14 @@ const TransactionsScreen = () => {
   };
 
   const handleDelete = (item) =>
-    Alert.alert("Delete", `Remove this ${item.type}?`, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => deleteItem(item) },
-    ]);
+    Alert.alert(
+      "Delete Transaction",
+      `Are you sure you want to remove this ${item.type}?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: () => deleteItem(item) },
+      ]
+    );
 
   const allTransactions = useMemo(() => {
     const combined = [
@@ -102,71 +122,94 @@ const TransactionsScreen = () => {
   }, [allTransactions]);
 
   const renderItem = (item) => {
-    const color = item.type === "expense" ? theme.colors.error : "green";
+    const isIncome = item.type === "income";
+    const amountColor = isIncome ? semantic.income : semantic.expense;
+    const sign = isIncome ? "+" : "-";
 
     return (
-      <List.Item
+      <View
         key={item.id}
-        title={item.category}
-        titleStyle={{ color: theme.colors.onSurface }}
-        description={item.notes}
-        descriptionStyle={{ color: theme.colors.onSurfaceVariant }}
-        left={() => (
-          <List.Icon
-            icon={
-              item.type === "expense" ? "arrow-down-circle" : "arrow-up-circle"
-            }
-            color={color}
+        style={[
+          styles.transactionItem,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.outline,
+          },
+        ]}
+      >
+        <CategoryIcon category={item.category} size={20} containerSize={44} />
+
+        <View style={styles.itemContent}>
+          <Text style={[styles.itemTitle, { color: theme.colors.onSurface }]} numberOfLines={1}>
+            {item.category || "General"}
+          </Text>
+          <Text style={[styles.itemNotes, { color: theme.colors.onSurfaceVariant }]} numberOfLines={1}>
+            {item.notes || (isIncome ? "Income" : "Expense")}
+          </Text>
+        </View>
+
+        <View style={styles.itemRight}>
+          <Text style={[styles.amountText, { color: amountColor }]}>
+            {sign}
+            {currencySymbol}
+            {Number(item.amount || 0).toFixed(2)}
+          </Text>
+          <IconButton
+            icon="trash-can-outline"
+            size={18}
+            iconColor={theme.colors.onSurfaceVariant}
+            onPress={() => handleDelete(item)}
+            accessibilityLabel="Delete transaction"
+            accessibilityRole="button"
+            style={styles.deleteButton}
           />
-        )}
-        right={() => (
-          <View style={styles.row}>
-            <Text style={[styles.amount, { color }]}>
-              {item.type === "expense" ? "-" : "+"}₹{item.amount.toFixed(2)}
-            </Text>
-            <IconButton
-              icon="trash-can-outline"
-              size={20}
-              iconColor={theme.colors.error}
-              onPress={() => handleDelete(item)}
-            />
-          </View>
-        )}
-        style={{ backgroundColor: theme.colors.surface, marginVertical: 2 }}
-      />
+        </View>
+      </View>
     );
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <Button
-        mode="text"
-        icon="arrow-left"
-        onPress={() => navigation.goBack()}
-        textColor={theme.colors.onBackground}
-        style={{ alignSelf: "flex-start", marginLeft: 10, marginVertical: 10 }}
-      >
-        Back
-      </Button>
+    <SafeAreaView
+      style={[styles.safeArea, { backgroundColor: theme.colors.background }]}
+      edges={["top", "left", "right"]}
+    >
+      <AppHeader
+        title="Transaction History"
+        showBack={navigation.canGoBack()}
+        onBack={() => navigation.goBack()}
+        rightAction={
+          <IconButton
+            icon="calendar-month-outline"
+            size={22}
+            iconColor={selectedDate ? brand.emerald : theme.colors.onSurface}
+            onPress={() => setShowPicker(true)}
+            accessibilityLabel="Filter transactions by date"
+            accessibilityRole="button"
+          />
+        }
+      />
 
-      <View style={styles.calendarContainer}>
-        <IconButton
-          icon="calendar"
-          size={30}
-          iconColor={theme.colors.primary}
-          onPress={() => setShowPicker(true)}
-        />
-
-        {selectedDate && (
-          <Button
-            mode="text"
+      {/* Date Filter Active Banner */}
+      {selectedDate && (
+        <View style={[styles.filterBanner, { backgroundColor: theme.dark ? "#1E293B" : "#E2E8F0" }]}>
+          <View style={styles.filterBannerLeft}>
+            <Icon source="filter-variant" size={16} color={brand.emerald} />
+            <Text style={[styles.filterBannerText, { color: theme.colors.onSurface }]}>
+              Filtered: {formatDate(selectedDate)}
+            </Text>
+          </View>
+          <TouchableOpacity
             onPress={() => setSelectedDate(null)}
-            textColor={theme.colors.error}
+            accessibilityRole="button"
+            accessibilityLabel="Clear date filter"
           >
-            Clear Date
-          </Button>
-        )}
-      </View>
+            <Text style={[styles.clearFilterText, { color: semantic.expense }]}>
+              Clear
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {showPicker && (
         <DateTimePicker
           value={selectedDate || new Date()}
@@ -182,51 +225,130 @@ const TransactionsScreen = () => {
       <FlatList
         data={groupedData}
         keyExtractor={(item) => item.title}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.listContent}
         renderItem={({ item }) => (
-          <View>
-            <Text
-              style={[
-                styles.dateHeader,
-                {
-                  backgroundColor: theme.colors.surfaceVariant,
-                  color: theme.colors.onSurface,
-                },
-              ]}
-            >
-              {item.title}
-            </Text>
+          <View style={styles.sectionContainer}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={[styles.sectionDateText, { color: theme.colors.onSurfaceVariant }]}>
+                {item.title}
+              </Text>
+            </View>
             {item.data.map((t) => renderItem(t))}
           </View>
         )}
         ListEmptyComponent={
-          <Text
-            style={[styles.emptyText, { color: theme.colors.onBackground }]}
-          >
-            No transactions found.
-          </Text>
+          <View style={styles.emptyContainer}>
+            <Icon source="receipt-text-outline" size={48} color={theme.colors.onSurfaceVariant} />
+            <Text style={[styles.emptyTitle, { color: theme.colors.onSurface }]}>
+              No Transactions Found
+            </Text>
+            <Text style={[styles.emptySub, { color: theme.colors.onSurfaceVariant }]}>
+              {selectedDate
+                ? "No transactions recorded for this date."
+                : "Add an expense or income to start tracking."}
+            </Text>
+          </View>
         }
-        contentContainerStyle={{ paddingBottom: 20 }}
       />
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  emptyText: { textAlign: "center", marginTop: 40 },
-  calendarContainer: {
+  safeArea: {
+    flex: 1,
+  },
+  filterBanner: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  filterBannerLeft: {
     flexDirection: "row",
     alignItems: "center",
-    paddingLeft: 10,
-    marginBottom: 10,
   },
-  dateHeader: {
-    paddingVertical: 6,
-    paddingHorizontal: 16,
-    fontWeight: "bold",
-    marginTop: 10,
+  filterBannerText: {
+    fontSize: 13,
+    fontWeight: "600",
+    marginLeft: spacing.xs,
   },
-  row: { flexDirection: "row", alignItems: "center" },
-  amount: { fontSize: 16, fontWeight: "bold", marginRight: 8 },
+  clearFilterText: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  listContent: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: 40,
+    paddingTop: spacing.sm,
+  },
+  sectionContainer: {
+    marginBottom: spacing.lg,
+  },
+  sectionHeaderRow: {
+    paddingVertical: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  sectionDateText: {
+    fontSize: 12,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  transactionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: spacing.md,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: spacing.sm,
+  },
+  itemContent: {
+    flex: 1,
+    marginLeft: spacing.md,
+    marginRight: spacing.sm,
+  },
+  itemTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  itemNotes: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  itemRight: {
+    alignItems: "flex-end",
+    flexDirection: "row",
+  },
+  amountText: {
+    fontSize: 15,
+    fontWeight: "700",
+    marginRight: 4,
+  },
+  deleteButton: {
+    margin: 0,
+    padding: 0,
+    width: 28,
+    height: 28,
+  },
+  emptyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 80,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    marginTop: spacing.md,
+  },
+  emptySub: {
+    fontSize: 13,
+    textAlign: "center",
+    marginTop: spacing.xs,
+    maxWidth: 240,
+  },
 });
 
 export default TransactionsScreen;

@@ -2,14 +2,16 @@ import React, { useEffect } from "react";
 import { View, StyleSheet } from "react-native";
 import { useTheme, Text } from "react-native-paper";
 import LottieView from "lottie-react-native";
+import { brand } from "../src/theme/colors";
+import { spacing } from "../src/theme";
 
 const LoadingScreen = ({ onFinish }) => {
   const theme = useTheme();
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (onFinish) onFinish(); // optional callback
-    }, 5000); // 5 seconds
+      if (onFinish) onFinish();
+    }, 1500);
 
     return () => clearTimeout(timer);
   }, [onFinish]);
@@ -24,7 +26,9 @@ const LoadingScreen = ({ onFinish }) => {
         loop
         style={styles.animation}
       />
-      <Text style={[styles.text, { color: theme.colors.primary }]}></Text>
+      <Text style={[styles.text, { color: brand.emerald }]}>
+        EXPENSE TRACKER
+      </Text>
     </View>
   );
 };
@@ -36,13 +40,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   animation: {
-    width: 200,
-    height: 200,
+    width: 180,
+    height: 180,
   },
   text: {
-    marginTop: 20,
-    fontSize: 16,
-    fontWeight: "500",
+    marginTop: spacing.md,
+    fontSize: 14,
+    fontWeight: "700",
+    letterSpacing: 2,
   },
 });
 

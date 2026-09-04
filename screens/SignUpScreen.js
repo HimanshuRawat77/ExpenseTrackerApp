@@ -1,7 +1,17 @@
 import React, { useState } from "react";
-import { View, StyleSheet, TouchableOpacity, Alert } from "react-native";
-import { Button, Text, TextInput, Menu, useTheme } from "react-native-paper";
+import {
+  View,
+  StyleSheet,
+  TouchableOpacity,
+  Alert,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+} from "react-native";
+import { Button, Text, TextInput, Menu, Icon, useTheme } from "react-native-paper";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { brand, semantic } from "../src/theme/colors";
+import { spacing } from "../src/theme";
 
 const SignUpScreen = ({ navigation, onSignUp }) => {
   const [name, setName] = useState("");
@@ -20,11 +30,11 @@ const SignUpScreen = ({ navigation, onSignUp }) => {
 
   const handleSignUpPress = async () => {
     if (!name.trim() || !email.trim() || !password.trim() || !budget.trim()) {
-      Alert.alert("Error", "Please fill all the fields.");
+      Alert.alert("Error", "Please fill in all the required fields.");
       return;
     }
 
-    if (!emailRegex.test(email)) {
+    if (!emailRegex.test(email.trim())) {
       Alert.alert("Invalid Email", "Please enter a valid email address.");
       return;
     }
@@ -32,7 +42,7 @@ const SignUpScreen = ({ navigation, onSignUp }) => {
     if (!passwordRegex.test(password)) {
       Alert.alert(
         "Weak Password",
-        "Password must include uppercase, lowercase, number, and special character."
+        "Password must be at least 8 characters and include uppercase, lowercase, number, and special character."
       );
       return;
     }
@@ -40,7 +50,7 @@ const SignUpScreen = ({ navigation, onSignUp }) => {
     setLoading(true);
 
     try {
-      await onSignUp(name, email, password, currency, budget);
+      await onSignUp(name.trim(), email.trim(), password, currency, budget.trim());
       await AsyncStorage.setItem("userCurrency", currency);
     } catch (error) {
       console.error("SignUp error:", error);
@@ -51,122 +61,229 @@ const SignUpScreen = ({ navigation, onSignUp }) => {
   };
 
   return (
-    <View
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
       style={[styles.container, { backgroundColor: theme.colors.background }]}
     >
-      <Text variant="headlineMedium" style={styles.title}>
-        Create Account
-      </Text>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* Brand Icon Badge */}
+        <View style={styles.brandIconContainer}>
+          <View style={styles.brandBadge}>
+            <Icon source="account-plus-outline" size={32} color="#FFFFFF" />
+          </View>
+        </View>
 
-      <TextInput
-        label="Name"
-        value={name}
-        onChangeText={setName}
-        style={styles.input}
-      />
-
-      <TextInput
-        label="Email"
-        value={email}
-        onChangeText={setEmail}
-        style={styles.input}
-        keyboardType="email-address"
-        autoCapitalize="none"
-      />
-
-      <TextInput
-        label="Password"
-        value={password}
-        onChangeText={setPassword}
-        style={styles.input}
-        secureTextEntry={!showPassword}
-        right={
-          <TextInput.Icon
-            icon={showPassword ? "eye-off" : "eye"}
-            onPress={() => setShowPassword(!showPassword)}
-          />
-        }
-      />
-      <Menu
-        visible={menuVisible}
-        onDismiss={() => setMenuVisible(false)}
-        anchor={
-          <TextInput
-            label="Currency Type"
-            value={currency}
-            style={styles.input}
-            right={
-              <TextInput.Icon
-                icon="menu-down"
-                onPress={() => setMenuVisible(true)}
-              />
-            }
-            editable={false}
-          />
-        }
-      >
-        <Menu.Item
-          title="INR (₹)"
-          onPress={() => {
-            setCurrency("INR");
-            setMenuVisible(false);
-          }}
-        />
-        <Menu.Item
-          title="USD ($)"
-          onPress={() => {
-            setCurrency("USD");
-            setMenuVisible(false);
-          }}
-        />
-        <Menu.Item
-          title="EUR (€)"
-          onPress={() => {
-            setCurrency("EUR");
-            setMenuVisible(false);
-          }}
-        />
-        <Menu.Item
-          title="GBP (£)"
-          onPress={() => {
-            setCurrency("GBP");
-            setMenuVisible(false);
-          }}
-        />
-      </Menu>
-
-      <TextInput
-        label="Monthly Budget"
-        value={budget}
-        onChangeText={setBudget}
-        style={styles.input}
-        keyboardType="numeric"
-      />
-
-      <Button
-        mode="contained"
-        onPress={handleSignUpPress}
-        loading={loading}
-        style={styles.button}
-      >
-        Sign Up
-      </Button>
-
-      <TouchableOpacity onPress={() => navigation.navigate("Login")}>
-        <Text style={[styles.link, { color: theme.colors.primary }]}>
-          Already have an account? Login
+        <Text variant="headlineMedium" style={[styles.title, { color: theme.colors.onSurface }]}>
+          Create Account
         </Text>
-      </TouchableOpacity>
-    </View>
+        <Text style={[styles.subtitle, { color: theme.colors.onSurfaceVariant }]}>
+          Set up your personal expense tracker in seconds
+        </Text>
+
+        <TextInput
+          label="Full Name"
+          value={name}
+          onChangeText={setName}
+          style={styles.input}
+          mode="outlined"
+          outlineColor={theme.colors.outline}
+          activeOutlineColor={brand.emerald}
+          textColor={theme.colors.onSurface}
+          left={<TextInput.Icon icon="account-outline" color={theme.colors.onSurfaceVariant} />}
+        />
+
+        <TextInput
+          label="Email Address"
+          value={email}
+          onChangeText={setEmail}
+          style={styles.input}
+          mode="outlined"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          outlineColor={theme.colors.outline}
+          activeOutlineColor={brand.emerald}
+          textColor={theme.colors.onSurface}
+          left={<TextInput.Icon icon="email-outline" color={theme.colors.onSurfaceVariant} />}
+        />
+
+        <TextInput
+          label="Password"
+          value={password}
+          onChangeText={setPassword}
+          style={styles.input}
+          mode="outlined"
+          secureTextEntry={!showPassword}
+          outlineColor={theme.colors.outline}
+          activeOutlineColor={brand.emerald}
+          textColor={theme.colors.onSurface}
+          left={<TextInput.Icon icon="lock-outline" color={theme.colors.onSurfaceVariant} />}
+          right={
+            <TextInput.Icon
+              icon={showPassword ? "eye-off-outline" : "eye-outline"}
+              color={theme.colors.onSurfaceVariant}
+              onPress={() => setShowPassword(!showPassword)}
+            />
+          }
+        />
+
+        <Menu
+          visible={menuVisible}
+          onDismiss={() => setMenuVisible(false)}
+          anchor={
+            <TouchableOpacity onPress={() => setMenuVisible(true)}>
+              <TextInput
+                label="Currency"
+                value={`${currency} (${{ INR: "₹", USD: "$", EUR: "€", GBP: "£" }[currency] || ""})`}
+                style={styles.input}
+                mode="outlined"
+                outlineColor={theme.colors.outline}
+                activeOutlineColor={brand.emerald}
+                textColor={theme.colors.onSurface}
+                editable={false}
+                left={<TextInput.Icon icon="currency-usd" color={theme.colors.onSurfaceVariant} />}
+                right={
+                  <TextInput.Icon
+                    icon="menu-down"
+                    color={theme.colors.onSurfaceVariant}
+                    onPress={() => setMenuVisible(true)}
+                  />
+                }
+              />
+            </TouchableOpacity>
+          }
+        >
+          <Menu.Item
+            title="INR (₹) - Indian Rupee"
+            onPress={() => {
+              setCurrency("INR");
+              setMenuVisible(false);
+            }}
+          />
+          <Menu.Item
+            title="USD ($) - US Dollar"
+            onPress={() => {
+              setCurrency("USD");
+              setMenuVisible(false);
+            }}
+          />
+          <Menu.Item
+            title="EUR (€) - Euro"
+            onPress={() => {
+              setCurrency("EUR");
+              setMenuVisible(false);
+            }}
+          />
+          <Menu.Item
+            title="GBP (£) - British Pound"
+            onPress={() => {
+              setCurrency("GBP");
+              setMenuVisible(false);
+            }}
+          />
+        </Menu>
+
+        <TextInput
+          label="Monthly Budget Target"
+          value={budget}
+          onChangeText={setBudget}
+          style={styles.input}
+          mode="outlined"
+          keyboardType="numeric"
+          outlineColor={theme.colors.outline}
+          activeOutlineColor={brand.emerald}
+          textColor={theme.colors.onSurface}
+          left={<TextInput.Icon icon="cash-multiple" color={theme.colors.onSurfaceVariant} />}
+        />
+
+        <Button
+          mode="contained"
+          onPress={handleSignUpPress}
+          loading={loading}
+          style={styles.button}
+          buttonColor={brand.emerald}
+          textColor="#FFFFFF"
+          contentStyle={styles.buttonContent}
+          labelStyle={styles.buttonLabel}
+          accessibilityLabel="Create Account"
+          accessibilityRole="button"
+        >
+          Sign Up
+        </Button>
+
+        <TouchableOpacity
+          onPress={() => navigation.navigate("Login")}
+          style={styles.linkContainer}
+          accessibilityRole="button"
+          accessibilityLabel="Already have an account? Login"
+        >
+          <Text style={[styles.linkText, { color: theme.colors.onSurfaceVariant }]}>
+            Already have an account?{" "}
+            <Text style={{ color: brand.emerald, fontWeight: "700" }}>Sign In</Text>
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, justifyContent: "center" },
-  title: { textAlign: "center", marginBottom: 20, fontWeight: "bold" },
-  input: { marginBottom: 10 },
-  button: { marginTop: 10, paddingVertical: 5 },
-  link: { textAlign: "center", marginTop: 20 },
+  container: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: spacing.xxl,
+    paddingVertical: spacing.xxxl,
+    justifyContent: "center",
+  },
+  brandIconContainer: {
+    alignItems: "center",
+    marginBottom: spacing.lg,
+  },
+  brandBadge: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: brand.emerald,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: brand.emerald,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  title: {
+    textAlign: "center",
+    fontWeight: "700",
+    marginBottom: spacing.xs,
+  },
+  subtitle: {
+    textAlign: "center",
+    fontSize: 14,
+    marginBottom: spacing.xl,
+  },
+  input: {
+    marginBottom: spacing.md,
+    backgroundColor: "transparent",
+  },
+  button: {
+    marginTop: spacing.sm,
+    borderRadius: 12,
+  },
+  buttonContent: {
+    height: 48,
+  },
+  buttonLabel: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  linkContainer: {
+    marginTop: spacing.xl,
+    alignItems: "center",
+  },
+  linkText: {
+    fontSize: 14,
+  },
 });
 
 export default SignUpScreen;

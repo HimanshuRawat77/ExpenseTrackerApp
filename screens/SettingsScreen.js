@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, StyleSheet, Alert, Share } from "react-native";
+import { View, StyleSheet, Alert, Share, ScrollView } from "react-native";
 import {
   Button,
   List,
@@ -9,9 +9,13 @@ import {
   Avatar,
   IconButton,
   Menu,
+  Icon,
 } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { AppHeader } from "../src/components";
+import { brand, semantic } from "../src/theme/colors";
+import { spacing } from "../src/theme";
 
 const SettingsScreen = ({
   navigation,
@@ -37,29 +41,33 @@ const SettingsScreen = ({
 
     loadCurrency();
   }, []);
+
   const changeCurrency = async (newCurrency) => {
     try {
       setCurrency(newCurrency);
       await AsyncStorage.setItem("userCurrency", newCurrency);
       setMenuVisible(false);
-      Alert.alert("Success", "Currency updated.");
+      Alert.alert("Success", `Currency updated to ${newCurrency}.`);
     } catch (err) {
       console.log("Error saving currency:", err);
     }
   };
+
   const parseDate = (value) => {
     if (!value) return new Date();
     let d = new Date(value);
     if (!isNaN(d)) return d;
 
-    if (value.includes("/")) {
-      const [dd, mm, yyyy] = value.split("/");
-      return new Date(`${yyyy}-${mm}-${dd}`);
-    }
+    if (typeof value === "string") {
+      if (value.includes("/")) {
+        const [dd, mm, yyyy] = value.split("/");
+        return new Date(`${yyyy}-${mm}-${dd}`);
+      }
 
-    if (value.includes("-")) {
-      const [dd, mm, yyyy] = value.split("-");
-      return new Date(`${yyyy}-${mm}-${dd}`);
+      if (value.includes("-")) {
+        const [dd, mm, yyyy] = value.split("-");
+        return new Date(`${yyyy}-${mm}-${dd}`);
+      }
     }
 
     return new Date();
@@ -74,7 +82,7 @@ const SettingsScreen = ({
   };
 
   const formatAmount = (amount) => {
-    return amount.toLocaleString("en-IN", {
+    return Number(amount || 0).toLocaleString("en-IN", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
@@ -96,7 +104,7 @@ const SettingsScreen = ({
       ].sort((a, b) => parseDate(b.date) - parseDate(a.date));
 
       if (allTransactions.length === 0) {
-        Alert.alert("No Data", "You don't have any transactions to export.");
+        Alert.alert("No Data", "You don't have any transactions to export yet.");
         setExporting(false);
         return;
       }
@@ -105,28 +113,25 @@ const SettingsScreen = ({
       let totalExpense = 0;
       allTransactions.forEach((t) => {
         if (t.type === "Income") {
-          totalIncome += t.amount || 0;
+          totalIncome += Number(t.amount || 0);
         } else {
-          totalExpense += t.amount || 0;
+          totalExpense += Number(t.amount || 0);
         }
       });
 
       const now = new Date();
-      const reportTitle = `TRANSACTION REPORT - ${now.getDate()} ${now.toLocaleString(
+      const reportTitle = `EXPENSE TRACKER LEDGER - ${now.getDate()} ${now.toLocaleString(
         "default",
         { month: "short" }
       )} ${now.getFullYear()}`;
 
       let report = reportTitle + "\n";
       report += "=".repeat(60) + "\n\n";
-
-      report += "SUMMARY\n";
+      report += "EXECUTIVE SUMMARY\n";
       report += "-".repeat(60) + "\n";
-      report += `Total Income:      Rs. ${formatAmount(totalIncome)}\n`;
-      report += `Total Expenses:    Rs. ${formatAmount(totalExpense)}\n`;
-      report += `Net Balance:       Rs. ${formatAmount(
-        totalIncome - totalExpense
-      )}\n`;
+      report += `Total Income:       ${currency} ${formatAmount(totalIncome)}\n`;
+      report += `Total Expenses:     ${currency} ${formatAmount(totalExpense)}\n`;
+      report += `Net Balance:        ${currency} ${formatAmount(totalIncome - totalExpense)}\n`;
       report += `Total Transactions: ${allTransactions.length}\n\n`;
       report += "=".repeat(60) + "\n\n";
 
@@ -137,75 +142,46 @@ const SettingsScreen = ({
         grouped[date].push(t);
       });
 
-      // transactions by date
       Object.keys(grouped).forEach((date) => {
         report += `DATE: ${date}\n`;
         report += "-".repeat(60) + "\n";
-
-        let dayIncome = 0;
-        let dayExpense = 0;
 
         grouped[date].forEach((transaction) => {
           const isIncome = transaction.type === "Income";
           const symbol = isIncome ? "+" : "-";
 
-          report += `  ${
-            isIncome ? "INCOME" : "EXPENSE"
-          }  ${symbol} Rs. ${formatAmount(transaction.amount)}\n`;
+          report += `  ${isIncome ? "INCOME " : "EXPENSE"} ${symbol} ${currency} ${formatAmount(
+            transaction.amount
+          )}\n`;
           report += `  Category: ${transaction.category}\n`;
 
           if (transaction.notes && transaction.notes.trim()) {
             report += `  Notes: ${transaction.notes}\n`;
           }
           report += "\n";
-
-          if (isIncome) {
-            dayIncome += transaction.amount;
-          } else {
-            dayExpense += transaction.amount;
-          }
         });
-
-        report += `  Day Income:  Rs. ${formatAmount(dayIncome)}\n`;
-        report += `  Day Expense: Rs. ${formatAmount(dayExpense)}\n`;
-        report += `  Day Balance: Rs. ${formatAmount(
-          dayIncome - dayExpense
-        )}\n\n`;
       });
 
       report += "=".repeat(60) + "\n";
-      report += "END OF REPORT\n";
+      report += "END OF LEDGER\n";
 
-      try {
-        const result = await Share.share({
-          message: report,
-          title: reportTitle,
-        });
-
-        if (result.action === Share.sharedAction) {
-          Alert.alert("Success", "Report exported successfully!");
-        }
-      } catch (error) {
-        console.error("Share error:", error);
-        Alert.alert(
-          "Export Ready",
-          `Report is ready to share:\n\n${report.substring(0, 150)}...`,
-          [{ text: "OK" }]
-        );
-      }
+      await Share.share({
+        message: report,
+        title: reportTitle,
+      });
     } catch (error) {
       console.error("Error exporting:", error);
-      Alert.alert("Error", `Failed to export: ${error.message}`);
+      Alert.alert("Error", "Failed to export data.");
     } finally {
       setExporting(false);
     }
   };
 
   const confirmLogout = () => {
-    Alert.alert("Logout", "Are you sure you want to logout?", [
+    Alert.alert("Sign Out", "Are you sure you want to sign out of your account?", [
       { text: "Cancel", style: "cancel" },
       {
-        text: "Logout",
+        text: "Sign Out",
         style: "destructive",
         onPress: async () => {
           await AsyncStorage.removeItem("currentUser");
@@ -218,115 +194,224 @@ const SettingsScreen = ({
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: theme.colors.background }]}
+      edges={["top", "left", "right"]}
     >
-      <View style={styles.headerRow}>
-        <IconButton
-          icon="arrow-left"
-          size={24}
-          onPress={() => navigation.goBack()}
-        />
-        <Text style={styles.headerTitle}>Settings</Text>
-      </View>
+      <AppHeader
+        title="Profile & Settings"
+        showBack={navigation.canGoBack()}
+        onBack={() => navigation.goBack()}
+      />
 
-      {/* Profile Info */}
-      <View style={styles.profileHeader}>
-        <Avatar.Text
-          size={64}
-          label={user?.name ? user.name.charAt(0).toUpperCase() : "U"}
-          style={styles.avatar}
-        />
-        <Text variant="headlineSmall" style={styles.name}>
-          {user?.name}
-        </Text>
-        <Text variant="titleMedium" style={styles.email}>
-          {user?.email}
-        </Text>
-      </View>
-
-      <List.Section>
-        <List.Subheader>Preferences</List.Subheader>
-        <List.Item
-          title="Dark Mode"
-          left={() => <List.Icon icon="theme-light-dark" />}
-          right={() => (
-            <Switch value={isDarkMode} onValueChange={onSetIsDarkMode} />
-          )}
-        />
-        <Menu
-          visible={menuVisible}
-          onDismiss={() => setMenuVisible(false)}
-          anchor={
-            <List.Item
-              title="Currency"
-              description={currency}
-              left={() => <List.Icon icon="currency-usd" />}
-              onPress={() => setMenuVisible(true)}
-            />
-          }
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Profile Card */}
+        <View
+          style={[
+            styles.profileCard,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.outline,
+            },
+          ]}
         >
-          <Menu.Item title="INR (₹)" onPress={() => changeCurrency("INR")} />
-          <Menu.Item title="USD ($)" onPress={() => changeCurrency("USD")} />
-          <Menu.Item title="EUR (€)" onPress={() => changeCurrency("EUR")} />
-          <Menu.Item title="GBP (£)" onPress={() => changeCurrency("GBP")} />
-        </Menu>
-      </List.Section>
+          <Avatar.Text
+            size={64}
+            label={user?.name ? user.name.charAt(0).toUpperCase() : "U"}
+            style={[styles.avatar, { backgroundColor: brand.emerald }]}
+            color="#FFFFFF"
+          />
+          <Text variant="titleLarge" style={[styles.name, { color: theme.colors.onSurface }]}>
+            {user?.name || "Expense User"}
+          </Text>
+          <Text variant="bodyMedium" style={[styles.email, { color: theme.colors.onSurfaceVariant }]}>
+            {user?.email || "user@expensetracker.local"}
+          </Text>
+        </View>
 
-      {/* Account */}
-      <List.Section>
-        <List.Subheader>Account</List.Subheader>
-        <List.Item
-          title="Export Data"
-          description="Get a CSV of your transactions"
-          left={() => <List.Icon icon="file-document-outline" />}
-          onPress={exportData}
-          disabled={exporting}
-        />
-      </List.Section>
+        {/* Preferences Section */}
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.onSurfaceVariant }]}>
+            Preferences
+          </Text>
+        </View>
 
-      {/* Logout Button */}
-      <Button
-        mode="contained"
-        onPress={confirmLogout}
-        style={styles.button}
-        buttonColor={theme.colors.error}
-      >
-        Logout
-      </Button>
+        <View
+          style={[
+            styles.cardGroup,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.outline,
+            },
+          ]}
+        >
+          <List.Item
+            title="Dark Mode"
+            titleStyle={{ color: theme.colors.onSurface, fontWeight: "500" }}
+            left={() => (
+              <View style={styles.listIconContainer}>
+                <Icon source="theme-light-dark" size={22} color={brand.emerald} />
+              </View>
+            )}
+            right={() => (
+              <Switch
+                value={isDarkMode}
+                onValueChange={onSetIsDarkMode}
+                color={brand.emerald}
+              />
+            )}
+            style={styles.listItem}
+          />
+
+          <View style={[styles.divider, { backgroundColor: theme.colors.outline }]} />
+
+          <Menu
+            visible={menuVisible}
+            onDismiss={() => setMenuVisible(false)}
+            anchor={
+              <List.Item
+                title="Primary Currency"
+                description={currency}
+                descriptionStyle={{ color: brand.emerald, fontWeight: "600" }}
+                titleStyle={{ color: theme.colors.onSurface, fontWeight: "500" }}
+                left={() => (
+                  <View style={styles.listIconContainer}>
+                    <Icon source="currency-usd" size={22} color={brand.emerald} />
+                  </View>
+                )}
+                right={() => (
+                  <Icon source="chevron-right" size={22} color={theme.colors.onSurfaceVariant} />
+                )}
+                onPress={() => setMenuVisible(true)}
+                style={styles.listItem}
+              />
+            }
+          >
+            <Menu.Item title="INR (₹) - Indian Rupee" onPress={() => changeCurrency("INR")} />
+            <Menu.Item title="USD ($) - US Dollar" onPress={() => changeCurrency("USD")} />
+            <Menu.Item title="EUR (€) - Euro" onPress={() => changeCurrency("EUR")} />
+            <Menu.Item title="GBP (£) - British Pound" onPress={() => changeCurrency("GBP")} />
+          </Menu>
+        </View>
+
+        {/* Data & Storage Section */}
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.onSurfaceVariant }]}>
+            Data & Privacy
+          </Text>
+        </View>
+
+        <View
+          style={[
+            styles.cardGroup,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.outline,
+            },
+          ]}
+        >
+          <List.Item
+            title="Export Ledger"
+            description="Share or backup your transactions"
+            descriptionStyle={{ color: theme.colors.onSurfaceVariant }}
+            titleStyle={{ color: theme.colors.onSurface, fontWeight: "500" }}
+            left={() => (
+              <View style={styles.listIconContainer}>
+                <Icon source="file-document-outline" size={22} color={brand.emerald} />
+              </View>
+            )}
+            right={() => (
+              <Icon source="share-variant-outline" size={20} color={theme.colors.onSurfaceVariant} />
+            )}
+            onPress={exportData}
+            disabled={exporting}
+            style={styles.listItem}
+          />
+        </View>
+
+        {/* Sign Out Button (Semantic Expense Color) */}
+        <Button
+          mode="contained"
+          onPress={confirmLogout}
+          style={styles.logoutBtn}
+          buttonColor={semantic.expense}
+          textColor="#FFFFFF"
+          icon="logout"
+          contentStyle={styles.btnContent}
+          labelStyle={styles.btnLabel}
+          accessibilityLabel="Sign out of account"
+          accessibilityRole="button"
+        >
+          Sign Out
+        </Button>
+      </ScrollView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 10,
-    paddingTop: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#ddd",
+  scrollContent: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: 40,
+    paddingTop: spacing.md,
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginLeft: 5,
-  },
-  profileHeader: {
+  profileCard: {
     alignItems: "center",
-    paddingVertical: 20,
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: spacing.xl,
   },
   avatar: {
-    marginBottom: 10,
+    marginBottom: spacing.sm,
   },
   name: {
-    fontWeight: "bold",
+    fontWeight: "700",
+    marginBottom: 2,
   },
   email: {
-    color: "#888",
+    fontSize: 14,
   },
-  button: {
-    margin: 20,
-    marginTop: 40,
+  sectionHeader: {
+    marginBottom: spacing.xs,
+    marginLeft: 4,
+  },
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  cardGroup: {
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: "hidden",
+    marginBottom: spacing.xl,
+  },
+  listItem: {
+    paddingVertical: 6,
+  },
+  listIconContainer: {
+    justifyContent: "center",
+    alignItems: "center",
+    width: 36,
+    height: 36,
+    marginLeft: 4,
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    marginLeft: 52,
+  },
+  logoutBtn: {
+    marginTop: spacing.md,
+    borderRadius: 12,
+  },
+  btnContent: {
+    height: 48,
+  },
+  btnLabel: {
+    fontSize: 15,
+    fontWeight: "700",
   },
 });
 
