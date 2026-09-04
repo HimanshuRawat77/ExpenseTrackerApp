@@ -17,7 +17,7 @@ import LoginScreen from "./screens/LoginScreen";
 import SignUpScreen from "./screens/SignUpScreen";
 import LoadingScreen from "./screens/LoadingScreen";
 import BottomTabs from "./navigation/BottomTabs";
-import SettingsScreen from "./screens/SettingsScreen"; // ✅ FIXED IMPORT
+import SettingsScreen from "./screens/SettingsScreen"; // FIXED IMPORT
 import AddTransactionScreen from "./screens/AddTransactionScreen";
 
 const Stack = createNativeStackNavigator();
@@ -82,8 +82,75 @@ export default function App() {
 
   if (isLoading) return <LoadingScreen />;
 
-  const paperTheme = isDarkMode ? MD3DarkTheme : MD3LightTheme;
-  const navTheme = isDarkMode ? NavDarkTheme : NavLightTheme;
+  const customLightTheme = {
+    ...MD3LightTheme,
+    colors: {
+      ...MD3LightTheme.colors,
+      primary: '#1E88E5', // Vibrant Blue
+      onPrimary: '#FFFFFF',
+      primaryContainer: '#BBDEFB',
+      onPrimaryContainer: '#001E36',
+      secondary: '#E53935', // Vibrant Red
+      onSecondary: '#FFFFFF',
+      secondaryContainer: '#FFCDD2',
+      onSecondaryContainer: '#410002',
+      error: '#B3261E',
+      background: '#F8F9FA',
+      surface: '#FFFFFF',
+      elevation: {
+        level1: '#F1F5F9',
+        level2: '#E2E8F0',
+        level3: '#CBD5E1',
+      }
+    },
+  };
+
+  const customDarkTheme = {
+    ...MD3DarkTheme,
+    colors: {
+      ...MD3DarkTheme.colors,
+      primary: '#64B5F6', // Lighter Blue for Dark Mode
+      onPrimary: '#003258',
+      primaryContainer: '#00497D',
+      onPrimaryContainer: '#D1E4FF',
+      secondary: '#EF5350', // Lighter Red for Dark Mode
+      onSecondary: '#680005',
+      secondaryContainer: '#93000A',
+      onSecondaryContainer: '#FFDAD6',
+      error: '#F2B8B5',
+      background: '#121212',
+      surface: '#1E1E1E',
+    },
+  };
+
+  const paperTheme = isDarkMode ? customDarkTheme : customLightTheme;
+  
+  // Create a matching React Navigation theme
+  const customNavLightTheme = {
+    ...NavLightTheme,
+    colors: {
+      ...NavLightTheme.colors,
+      primary: customLightTheme.colors.primary,
+      background: customLightTheme.colors.background,
+      card: customLightTheme.colors.surface,
+      text: customLightTheme.colors.onSurface,
+      border: customLightTheme.colors.outline,
+    },
+  };
+  
+  const customNavDarkTheme = {
+    ...NavDarkTheme,
+    colors: {
+      ...NavDarkTheme.colors,
+      primary: customDarkTheme.colors.primary,
+      background: customDarkTheme.colors.background,
+      card: customDarkTheme.colors.surface,
+      text: customDarkTheme.colors.onSurface,
+      border: customDarkTheme.colors.outline,
+    },
+  };
+
+  const navTheme = isDarkMode ? customNavDarkTheme : customNavLightTheme;
 
   return (
     <PaperProvider theme={paperTheme}>

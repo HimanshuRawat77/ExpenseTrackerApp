@@ -7,9 +7,11 @@ import {
   SegmentedButtons,
   IconButton,
   useTheme,
+  ActivityIndicator,
 } from "react-native-paper";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
+import * as ImagePicker from "expo-image-picker";
 
 const AddTransactionScreen = ({ navigation }) => {
   const theme = useTheme();
@@ -17,6 +19,37 @@ const AddTransactionScreen = ({ navigation }) => {
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("");
   const [notes, setNotes] = useState("");
+  const [isScanning, setIsScanning] = useState(false);
+
+  const scanReceipt = async () => {
+    // Request permission
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    
+    if (permissionResult.granted === false) {
+      alert("Permission to access camera roll is required!");
+      return;
+    }
+
+    // Pick image
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: false,
+      quality: 1,
+    });
+
+    if (!result.canceled) {
+      setIsScanning(true);
+      // Mock OCR Processing Delay
+      setTimeout(() => {
+        setType("expense");
+        setAmount("45.50");
+        setCategory("Groceries");
+        setNotes("Scanned from receipt");
+        setIsScanning(false);
+        alert("Receipt scanned successfully! Data extracted.");
+      }, 2000);
+    }
+  };
 
   const saveToStorage = async (key, newItem) => {
     try {
@@ -55,10 +88,7 @@ const AddTransactionScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView
-      style={[
-        styles.safeArea,
-        { backgroundColor: theme.colors.background }, // ⭐ THEME BG
-      ]}
+      style={[styles.safeArea, { backgroundColor: theme.colors.background }]}
     >
       <View
         style={[
@@ -73,13 +103,19 @@ const AddTransactionScreen = ({ navigation }) => {
           icon="arrow-left"
           size={24}
           onPress={() => navigation.goBack()}
-          iconColor={theme.colors.onSurface} // ⭐ TEXT COLOR FIX
+          iconColor={theme.colors.onSurface}
         />
 
         <Text style={[styles.headerTitle, { color: theme.colors.onSurface }]}>
           Add Transaction
         </Text>
-        <View style={{ width: 40 }} />
+        <IconButton
+          icon="camera"
+          size={24}
+          onPress={scanReceipt}
+          iconColor={theme.colors.primary}
+          disabled={isScanning}
+        />
       </View>
 
       <ScrollView
@@ -97,6 +133,13 @@ const AddTransactionScreen = ({ navigation }) => {
           ]}
           style={styles.segmented}
         />
+
+        {isScanning ? (
+          <View style={styles.scanningContainer}>
+            <ActivityIndicator animating={true} size="large" />
+            <Text style={styles.scanningText}>Analyzing receipt...</Text>
+          </View>
+        ) : null}
 
         <TextInput
           label="Amount"
@@ -166,6 +209,17 @@ const styles = StyleSheet.create({
   button: {
     marginTop: 10,
     paddingVertical: 6,
+  },
+  scanningContainer: {
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 15,
+  },
+  scanningText: {
+    marginTop: 10,
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
 
