@@ -29,7 +29,7 @@ exports.getSummary = async (req, res, next) => {
       if (t._id === 'expense') totalExpenses = t.total;
     });
 
-    const balance = totalIncome - totalExpenses;
+    const balance = Math.max(0, totalIncome - totalExpenses);
 
     // Previous month totals
     const prevTotals = await Transaction.aggregate([

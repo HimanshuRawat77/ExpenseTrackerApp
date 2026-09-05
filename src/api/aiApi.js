@@ -27,7 +27,7 @@ export const invalidateAIInsightCache = async () => {
 const generateLocalStructuredInsight = (expenses = [], income = [], currencySymbol = '₹') => {
   const totalExpense = expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
   const totalIncome = income.reduce((sum, i) => sum + (Number(i.amount) || 0), 0);
-  const balance = totalIncome - totalExpense;
+  const balance = Math.max(0, totalIncome - totalExpense);
 
   const categoryTotals = {};
   expenses.forEach((ex) => {

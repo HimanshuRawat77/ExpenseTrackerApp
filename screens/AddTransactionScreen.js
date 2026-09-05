@@ -73,7 +73,7 @@ const AddTransactionScreen = ({ navigation, route }) => {
           (sum, e) => sum + (Number(e.amount) || 0),
           0
         );
-        const currentBal = totalInc - totalExp;
+        const currentBal = Math.max(0, totalInc - totalExp);
 
         setBalance(currentBal);
         setIsBalanceLoaded(true);

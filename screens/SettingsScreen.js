@@ -1,5 +1,17 @@
 import React, { useEffect, useState } from "react";
-import { View, StyleSheet, Alert, Share, ScrollView } from "react-native";
+import {
+  View,
+  StyleSheet,
+  Alert,
+  Share,
+  ScrollView,
+  Platform,
+  Linking,
+  Modal,
+  TextInput,
+  TouchableOpacity,
+  Image,
+} from "react-native";
 import {
   Button,
   List,
@@ -10,12 +22,21 @@ import {
   IconButton,
   Menu,
   Icon,
+  Chip,
 } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppHeader } from "../src/components";
 import { brand, semantic } from "../src/theme/colors";
 import { spacing } from "../src/theme";
+import {
+  isSmsTrackingEnabled,
+  setSmsTrackingEnabled,
+  checkSmsPermission,
+  requestSmsPermission,
+  processIncomingSms,
+} from "../src/services/smsService";
+import { parseSms } from "../src/services/smsParser";
 
 const SettingsScreen = ({
   navigation,
@@ -28,6 +49,12 @@ const SettingsScreen = ({
   const [currency, setCurrency] = useState("INR");
   const [menuVisible, setMenuVisible] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [isSmsEnabled, setIsSmsEnabled] = useState(false);
+  const [showSimulator, setShowSimulator] = useState(false);
+  const [simulatorText, setSimulatorText] = useState(
+    "INR 500.00 debited from A/c XX1234 to VPA swiggy@upi on 05-09-26"
+  );
+  const [testResult, setTestResult] = useState(null);
 
   useEffect(() => {
     const loadCurrency = async () => {
@@ -39,8 +66,95 @@ const SettingsScreen = ({
       }
     };
 
+    const loadSmsSettings = async () => {
+      try {
+        const enabled = await isSmsTrackingEnabled();
+        setIsSmsEnabled(enabled);
+      } catch (error) {
+        console.log("Error loading SMS settings:", error);
+      }
+    };
+
     loadCurrency();
+    loadSmsSettings();
   }, []);
+
+  const handleToggleSmsTracking = async (val) => {
+    if (val) {
+      Alert.alert(
+        "Automatically track transactions",
+        "Expense Tracker can detect eligible bank and UPI SMS messages to automatically record your expenses and income.",
+        [
+          {
+            text: "Not Now",
+            style: "cancel",
+            onPress: () => setIsSmsEnabled(false),
+          },
+          {
+            text: "Enable Automatic Tracking",
+            onPress: async () => {
+              // Always enable tracking state so features are unlocked
+              await setSmsTrackingEnabled(true);
+              setIsSmsEnabled(true);
+
+              if (Platform.OS === "android") {
+                try {
+                  const granted = await requestSmsPermission();
+                  if (granted) {
+                    Alert.alert(
+                      "Tracking Active",
+                      "Automatic transaction tracking is now active with Android SMS permissions."
+                    );
+                  } else {
+                    Alert.alert(
+                      "Tracking Enabled",
+                      "Automatic tracking is now ON!\n\nNote: If you are running in Expo Go, Android restricts background SMS reading in the universal runner. You can detect any bank transaction instantly using the Quick SMS button on your Dashboard or the SMS Simulator below."
+                    );
+                  }
+                } catch (e) {
+                  Alert.alert("Tracking Enabled", "Automatic transaction tracking is now active.");
+                }
+              } else {
+                Alert.alert(
+                  "Tracking Mode Enabled",
+                  "Automatic transaction tracking is now ON. You can test and detect transactions using the SMS Simulator below or the Quick SMS button on your Dashboard."
+                );
+              }
+            },
+          },
+        ]
+      );
+    } else {
+      await setSmsTrackingEnabled(false);
+      setIsSmsEnabled(false);
+    }
+  };
+
+  const handleTestParse = () => {
+    const parsed = parseSms(simulatorText);
+    setTestResult(parsed || { error: "Non-financial message or unrecognized format (Ignored)" });
+  };
+
+  const handleSimulateIncomingSms = async () => {
+    if (!isSmsEnabled) {
+      Alert.alert("Tracking Disabled", "Please enable SMS Transaction Tracking above before simulating incoming messages.");
+      return;
+    }
+    const res = await processIncomingSms(simulatorText);
+    if (res.success) {
+      setShowSimulator(false);
+      Alert.alert(
+        "Transaction Detected!",
+        `Extracted ₹${res.transaction.amount} (${res.transaction.merchant || res.transaction.category}).\n\nIt is now waiting on your Home Dashboard for confirmation!`,
+        [
+          { text: "Go to Dashboard", onPress: () => navigation.navigate("Dashboard") },
+          { text: "OK" }
+        ]
+      );
+    } else {
+      Alert.alert("Ignored", `Message was not queued: ${res.reason || res.error || "Non-financial format"}`);
+    }
+  };
 
   const changeCurrency = async (newCurrency) => {
     try {
@@ -131,7 +245,7 @@ const SettingsScreen = ({
       report += "-".repeat(60) + "\n";
       report += `Total Income:       ${currency} ${formatAmount(totalIncome)}\n`;
       report += `Total Expenses:     ${currency} ${formatAmount(totalExpense)}\n`;
-      report += `Net Balance:        ${currency} ${formatAmount(totalIncome - totalExpense)}\n`;
+      report += `Net Balance:        ${currency} ${formatAmount(Math.max(0, totalIncome - totalExpense))}\n`;
       report += `Total Transactions: ${allTransactions.length}\n\n`;
       report += "=".repeat(60) + "\n\n";
 
@@ -292,6 +406,72 @@ const SettingsScreen = ({
           </Menu>
         </View>
 
+        {/* Automatic Tracking Section */}
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.onSurfaceVariant }]}>
+            Automatic Tracking
+          </Text>
+        </View>
+
+        <View
+          style={[
+            styles.cardGroup,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.outline,
+            },
+          ]}
+        >
+          <List.Item
+            title="Automatic Transaction Tracking"
+            description={
+              isSmsEnabled
+                ? "Listening for eligible bank/UPI SMS"
+                : "Automatic transaction tracking is off."
+            }
+            descriptionStyle={{
+              color: isSmsEnabled ? brand.emerald : theme.colors.onSurfaceVariant,
+              fontWeight: isSmsEnabled ? "600" : "400",
+            }}
+            titleStyle={{ color: theme.colors.onSurface, fontWeight: "500" }}
+            left={() => (
+              <View style={styles.listIconContainer}>
+                <Icon source="message-badge-outline" size={22} color={brand.emerald} />
+              </View>
+            )}
+            right={() => (
+              <Switch
+                value={isSmsEnabled}
+                onValueChange={handleToggleSmsTracking}
+                color={brand.emerald}
+              />
+            )}
+            style={styles.listItem}
+          />
+
+          <View style={[styles.divider, { backgroundColor: theme.colors.outline }]} />
+
+          <List.Item
+            title="SMS Detection Simulator"
+            description="Test with real bank/UPI SMS messages"
+            descriptionStyle={{ color: theme.colors.onSurfaceVariant }}
+            titleStyle={{ color: theme.colors.onSurface, fontWeight: "500" }}
+            left={() => (
+              <View style={styles.listIconContainer}>
+                <Icon source="cellphone-wireless" size={22} color={brand.emerald} />
+              </View>
+            )}
+            right={() => (
+              <Icon source="chevron-right" size={22} color={theme.colors.onSurfaceVariant} />
+            )}
+            onPress={() => {
+              setShowSimulator(true);
+              setTestResult(parseSms(simulatorText));
+            }}
+            style={styles.listItem}
+          />
+        </View>
+
         {/* Data & Storage Section */}
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: theme.colors.onSurfaceVariant }]}>
@@ -342,7 +522,260 @@ const SettingsScreen = ({
         >
           Sign Out
         </Button>
+
+        {/* App Version & Logo Footer */}
+        <View style={styles.brandFooter}>
+          <Image
+            source={require("../assets/app-logo.png")}
+            style={styles.footerLogo}
+            resizeMode="contain"
+            accessibilityLabel="Expense Tracker Logo"
+          />
+          <Text style={[styles.footerAppName, { color: theme.colors.onSurface }]}>
+            Expense Tracker
+          </Text>
+          <Text style={[styles.footerVersion, { color: theme.colors.onSurfaceVariant }]}>
+            Version 1.0.0 • Track • Plan • Save
+          </Text>
+        </View>
       </ScrollView>
+
+      {/* SMS Detection Simulator Modal */}
+      <Modal
+        visible={showSimulator}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowSimulator(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.modalContainer,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.outline,
+              },
+            ]}
+          >
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleRow}>
+                <Icon source="cellphone-wireless" size={24} color={brand.emerald} />
+                <Text variant="titleMedium" style={[styles.modalTitle, { color: theme.colors.onSurface }]}>
+                  SMS Detection Simulator
+                </Text>
+              </View>
+              <IconButton
+                icon="close"
+                size={22}
+                onPress={() => setShowSimulator(false)}
+                iconColor={theme.colors.onSurfaceVariant}
+              />
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScroll}>
+              <Text variant="bodySmall" style={[styles.modalHint, { color: theme.colors.onSurfaceVariant }]}>
+                Select a preset or paste any real Indian bank / UPI SMS to verify deterministic parsing and safe confirmation.
+              </Text>
+
+              {/* Quick Presets */}
+              <Text style={[styles.presetLabel, { color: theme.colors.onSurfaceVariant }]}>
+                Quick Presets:
+              </Text>
+              <View style={styles.presetsWrapper}>
+                <Chip
+                  compact
+                  mode="outlined"
+                  style={styles.presetChip}
+                  onPress={() => {
+                    const txt = "INR 500.00 debited from A/c XX1234 to VPA swiggy@upi on 05-09-26. Ref 123456789012";
+                    setSimulatorText(txt);
+                    setTestResult(parseSms(txt));
+                  }}
+                >
+                  Swiggy UPI
+                </Chip>
+                <Chip
+                  compact
+                  mode="outlined"
+                  style={styles.presetChip}
+                  onPress={() => {
+                    const txt = "Your A/c XX1234 is credited with INR 35,000.00 on 01-09-2026. Ref 987654321098";
+                    setSimulatorText(txt);
+                    setTestResult(parseSms(txt));
+                  }}
+                >
+                  Salary Credit
+                </Chip>
+                <Chip
+                  compact
+                  mode="outlined"
+                  style={styles.presetChip}
+                  onPress={() => {
+                    const txt = "₹450 spent on card ending 9876 at STARBUCKS on 03-09-2026";
+                    setSimulatorText(txt);
+                    setTestResult(parseSms(txt));
+                  }}
+                >
+                  Starbucks Card
+                </Chip>
+                <Chip
+                  compact
+                  mode="outlined"
+                  style={styles.presetChip}
+                  onPress={() => {
+                    const txt = "Your OTP for transaction of INR 500 at Amazon is 482910. Do not share this OTP.";
+                    setSimulatorText(txt);
+                    setTestResult(parseSms(txt));
+                  }}
+                >
+                  OTP (Ignored)
+                </Chip>
+                <Chip
+                  compact
+                  mode="outlined"
+                  style={styles.presetChip}
+                  onPress={() => {
+                    const txt = "Congratulations! You are eligible for a pre-approved personal loan of Rs 5,00,000. Apply now.";
+                    setSimulatorText(txt);
+                    setTestResult(parseSms(txt));
+                  }}
+                >
+                  Loan Spam (Ignored)
+                </Chip>
+              </View>
+
+              {/* SMS Input */}
+              <TextInput
+                value={simulatorText}
+                onChangeText={(t) => {
+                  setSimulatorText(t);
+                  setTestResult(parseSms(t));
+                }}
+                placeholder="Paste bank/UPI SMS message here..."
+                placeholderTextColor={theme.colors.onSurfaceVariant}
+                multiline
+                numberOfLines={3}
+                style={[
+                  styles.smsInput,
+                  {
+                    color: theme.colors.onSurface,
+                    backgroundColor: theme.dark ? "#1E293B" : "#F8FAFC",
+                    borderColor: theme.colors.outline,
+                  },
+                ]}
+              />
+
+              {/* Action Buttons */}
+              <View style={styles.modalActionsRow}>
+                <Button
+                  mode="outlined"
+                  onPress={handleTestParse}
+                  style={styles.inspectBtn}
+                  textColor={brand.emerald}
+                >
+                  Inspect Parser
+                </Button>
+                <Button
+                  mode="contained"
+                  onPress={handleSimulateIncomingSms}
+                  style={styles.simulateBtn}
+                  buttonColor={brand.emerald}
+                  textColor="#FFFFFF"
+                  icon="tray-arrow-down"
+                >
+                  Simulate Arrival
+                </Button>
+              </View>
+
+              {/* Parsed Result Box */}
+              {testResult && (
+                <View
+                  style={[
+                    styles.resultCard,
+                    {
+                      backgroundColor: testResult.error
+                        ? "rgba(239, 68, 68, 0.08)"
+                        : "rgba(16, 185, 129, 0.08)",
+                      borderColor: testResult.error
+                        ? semantic.expense
+                        : brand.emerald,
+                    },
+                  ]}
+                >
+                  <View style={styles.resultTitleRow}>
+                    <Icon
+                      source={testResult.error ? "alert-circle" : "check-circle"}
+                      size={18}
+                      color={testResult.error ? semantic.expense : brand.emerald}
+                    />
+                    <Text
+                      style={[
+                        styles.resultHeading,
+                        { color: testResult.error ? semantic.expense : brand.emerald },
+                      ]}
+                    >
+                      {testResult.error ? "Non-Financial / Ignored" : "Eligible Transaction Candidate"}
+                    </Text>
+                  </View>
+
+                  {testResult.error ? (
+                    <Text style={[styles.resultText, { color: theme.colors.onSurfaceVariant }]}>
+                      {testResult.error}
+                    </Text>
+                  ) : (
+                    <View style={styles.detailsGrid}>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Type:</Text>
+                        <Text style={[styles.detailValue, { color: testResult.type === 'expense' ? semantic.expense : brand.emerald, fontWeight: "700" }]}>
+                          {testResult.type.toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Amount:</Text>
+                        <Text style={[styles.detailValue, { color: theme.colors.onSurface, fontWeight: "700" }]}>
+                          ₹{testResult.amount}
+                        </Text>
+                      </View>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Merchant:</Text>
+                        <Text style={[styles.detailValue, { color: theme.colors.onSurface }]}>
+                          {testResult.merchant || "Unknown (Safe fallback)"}
+                        </Text>
+                      </View>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Category:</Text>
+                        <Text style={[styles.detailValue, { color: theme.colors.onSurface }]}>
+                          {testResult.category}
+                        </Text>
+                      </View>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Payment Method:</Text>
+                        <Text style={[styles.detailValue, { color: theme.colors.onSurface }]}>
+                          {testResult.paymentMethod}
+                        </Text>
+                      </View>
+                      {testResult.externalId && (
+                        <View style={styles.detailRow}>
+                          <Text style={styles.detailLabel}>Reference ID:</Text>
+                          <Text style={[styles.detailValue, { color: theme.colors.onSurface }]}>
+                            {testResult.externalId}
+                          </Text>
+                        </View>
+                      )}
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Fingerprint:</Text>
+                        <Text numberOfLines={1} style={[styles.detailValue, { color: theme.colors.onSurfaceVariant, fontSize: 11 }]}>
+                          {testResult.fingerprint}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -412,6 +845,139 @@ const styles = StyleSheet.create({
   btnLabel: {
     fontSize: 15,
     fontWeight: "700",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.65)",
+    justifyContent: "flex-end",
+  },
+  modalContainer: {
+    maxHeight: "90%",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 1,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: 34,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: spacing.xs,
+  },
+  modalTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  modalTitle: {
+    fontWeight: "700",
+  },
+  modalScroll: {
+    paddingBottom: 20,
+  },
+  modalHint: {
+    marginBottom: spacing.md,
+    lineHeight: 18,
+  },
+  presetLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    marginBottom: spacing.xs,
+    textTransform: "uppercase",
+  },
+  presetsWrapper: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: spacing.md,
+  },
+  presetChip: {
+    marginRight: 2,
+    marginBottom: 4,
+  },
+  smsInput: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: spacing.md,
+    fontSize: 14,
+    minHeight: 80,
+    textAlignVertical: "top",
+    marginBottom: spacing.md,
+  },
+  modalActionsRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  inspectBtn: {
+    flex: 1,
+    borderRadius: 10,
+  },
+  simulateBtn: {
+    flex: 1.3,
+    borderRadius: 10,
+  },
+  resultCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: spacing.md,
+    marginTop: spacing.xs,
+  },
+  resultTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: spacing.xs,
+  },
+  resultHeading: {
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  resultText: {
+    fontSize: 13,
+    marginTop: 4,
+  },
+  detailsGrid: {
+    marginTop: spacing.xs,
+    gap: 4,
+  },
+  detailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 2,
+  },
+  detailLabel: {
+    fontSize: 12,
+    color: "#64748B",
+    fontWeight: "500",
+  },
+  detailValue: {
+    fontSize: 13,
+  },
+  brandFooter: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: spacing.xl,
+    marginBottom: spacing.xxl,
+    paddingVertical: spacing.md,
+  },
+  footerLogo: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    marginBottom: spacing.xs,
+  },
+  footerAppName: {
+    fontSize: 15,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+  },
+  footerVersion: {
+    fontSize: 12,
+    marginTop: 2,
   },
 });
 

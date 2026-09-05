@@ -6,7 +6,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import DashboardScreen from "../screens/DashboardScreen";
 import TransactionScreen from "../screens/TransactionScreen";
-import CurrencyConverterScreen from "../screens/CurrencyConverterScreen";
+import FinancialNewsScreen from "../screens/FinancialNewsScreen";
 import SettingsScreen from "../screens/SettingsScreen";
 import { AppIcon } from "../src/components";
 import { brand } from "../src/theme/colors";
@@ -131,7 +131,7 @@ export default function BottomTabs({
                     (sum, e) => sum + (Number(e.amount) || 0),
                     0
                   );
-                  const bal = totalInc - totalExp;
+                  const bal = Math.max(0, totalInc - totalExp);
                   navigation.navigate("AddTransaction", { balance: bal });
                 } catch (e) {
                   navigation.navigate("AddTransaction");
@@ -142,16 +142,16 @@ export default function BottomTabs({
         })}
       />
 
-      {/* 4. ANALYTICS / CONVERTER */}
+      {/* 4. MARKETS & DAILY FINANCIAL NEWS */}
       <Tab.Screen
-        name="Converter"
-        component={CurrencyConverterScreen}
+        name="Markets"
+        component={FinancialNewsScreen}
         options={{
-          tabBarLabel: "Converter",
-          tabBarAccessibilityLabel: "Currency converter",
+          tabBarLabel: "Markets",
+          tabBarAccessibilityLabel: "Daily financial news, gold, silver, and stock market rates",
           tabBarIcon: ({ color, focused }) => (
             <AppIcon
-              name={focused ? "chart-line" : "currency-usd"}
+              name={focused ? "newspaper-variant" : "newspaper-variant-outline"}
               size={24}
               color={color}
             />

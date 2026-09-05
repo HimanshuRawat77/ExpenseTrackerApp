@@ -7,6 +7,7 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from "react-native";
 import { Button, Text, TextInput, Menu, Icon, useTheme } from "react-native-paper";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -64,11 +65,14 @@ const SignUpScreen = ({ navigation, onSignUp }) => {
       style={[styles.container, { backgroundColor: theme.colors.background }]}
     >
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Brand Icon Badge */}
+        {/* Brand App Logo */}
         <View style={styles.brandIconContainer}>
-          <View style={styles.brandBadge}>
-            <Icon source="account-plus-outline" size={32} color="#FFFFFF" />
-          </View>
+          <Image
+            source={require("../assets/app-logo.png")}
+            style={styles.brandLogo}
+            resizeMode="contain"
+            accessibilityLabel="Expense Tracker App Logo"
+          />
         </View>
 
         <Text variant="headlineMedium" style={[styles.title, { color: theme.colors.onSurface }]}>
@@ -224,18 +228,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: spacing.lg,
   },
-  brandBadge: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: brand.emerald,
-    justifyContent: "center",
-    alignItems: "center",
+  brandLogo: {
+    width: 84,
+    height: 84,
+    borderRadius: 20,
     shadowColor: brand.emerald,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
   },
   title: {
     textAlign: "center",

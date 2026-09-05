@@ -178,3 +178,57 @@ export const deleteTransactionInBackend = async (transactionId) => {
     return false;
   }
 };
+
+/**
+ * Sync parsed SMS transaction(s) to MongoDB Atlas via POST /api/transactions/sms
+ */
+export const syncSmsTransactionsToBackend = async (transactions) => {
+  if (!transactions || (Array.isArray(transactions) && transactions.length === 0)) {
+    return { success: false, created: [], duplicates: [], failed: [] };
+  }
+
+  const token = await AsyncStorage.getItem("authToken");
+  if (!token) {
+    return { success: false, created: [], duplicates: [], failed: [], offline: true };
+  }
+
+  const baseUrl = await getWorkingBaseUrl();
+  try {
+    const list = Array.isArray(transactions) ? transactions : [transactions];
+    const response = await fetch(`${baseUrl}/api/transactions/sms`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ transactions: list }),
+    });
+
+    const data = await response.json();
+    if (response.ok && data.data) {
+      return {
+        success: true,
+        created: data.data.created || [],
+        duplicates: data.data.duplicates || [],
+        failed: data.data.failed || [],
+      };
+    }
+    return {
+      success: false,
+      error: data.message || "Failed to sync SMS transactions",
+      created: [],
+      duplicates: [],
+      failed: list,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      offline: true,
+      error: error.message,
+      created: [],
+      duplicates: [],
+      failed: Array.isArray(transactions) ? transactions : [transactions],
+    };
+  }
+};
+

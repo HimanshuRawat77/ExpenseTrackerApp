@@ -6,8 +6,10 @@ import {
   TouchableOpacity,
   RefreshControl,
   Alert,
+  Modal,
+  TextInput,
 } from "react-native";
-import { Text, Avatar, IconButton, useTheme } from "react-native-paper";
+import { Text, Avatar, IconButton, useTheme, Button } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
@@ -22,6 +24,14 @@ import {
   getTransactionsFromBackend,
   deleteTransactionInBackend,
 } from "../src/api/transactionApi";
+import {
+  getPendingSmsConfirmations,
+  confirmSmsTransaction,
+  ignoreSmsTransaction,
+  syncOfflineSmsQueue,
+  addSmsListener,
+  processIncomingSms,
+} from "../src/services/smsService";
 import { brand, semantic } from "../src/theme/colors";
 import { spacing } from "../src/theme";
 
@@ -44,6 +54,10 @@ const DashboardScreen = ({ navigation, user }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiInsight, setAiInsight] = useState(null);
+  const [pendingSms, setPendingSms] = useState([]);
+  const [processingSmsId, setProcessingSmsId] = useState(null);
+  const [showQuickSmsModal, setShowQuickSmsModal] = useState(false);
+  const [quickSmsInput, setQuickSmsInput] = useState("");
 
   const currencySymbol =
     { INR: "₹", USD: "$", EUR: "€", GBP: "£" }[currency] || "₹";
@@ -61,18 +75,48 @@ const DashboardScreen = ({ navigation, user }) => {
       let currentExpenses = savedExpenses ? JSON.parse(savedExpenses) : [];
       let currentIncome = savedIncome ? JSON.parse(savedIncome) : [];
 
-      // Try fetching latest transactions from MongoDB Atlas
+      // Fetch latest transactions from MongoDB Atlas and merge with any unsynced local items
       try {
         const mongoTransactions = await getTransactionsFromBackend();
-        if (mongoTransactions && Array.isArray(mongoTransactions) && mongoTransactions.length > 0) {
-          currentExpenses = mongoTransactions.filter((t) => t.type === "expense");
-          currentIncome = mongoTransactions.filter((t) => t.type === "income");
+        if (mongoTransactions && Array.isArray(mongoTransactions)) {
+          const mongoTxIds = new Set(mongoTransactions.map((t) => t._id?.toString()).filter(Boolean));
+          const mongoFingerprints = new Set(mongoTransactions.map((t) => t.fingerprint).filter(Boolean));
+          const mongoExtIds = new Set(mongoTransactions.map((t) => t.externalId).filter(Boolean));
+
+          // Keep local transactions that haven't synced to MongoDB yet
+          const unsyncedExpenses = currentExpenses.filter(
+            (e) =>
+              !mongoTxIds.has(e._id?.toString()) &&
+              (!e.fingerprint || !mongoFingerprints.has(e.fingerprint)) &&
+              (!e.externalId || !mongoExtIds.has(e.externalId))
+          );
+          const unsyncedIncome = currentIncome.filter(
+            (i) =>
+              !mongoTxIds.has(i._id?.toString()) &&
+              (!i.fingerprint || !mongoFingerprints.has(i.fingerprint)) &&
+              (!i.externalId || !mongoExtIds.has(i.externalId))
+          );
+
+          currentExpenses = [...unsyncedExpenses, ...mongoTransactions.filter((t) => t.type === "expense")];
+          currentIncome = [...unsyncedIncome, ...mongoTransactions.filter((t) => t.type === "income")];
+
           await AsyncStorage.setItem("expenses", JSON.stringify(currentExpenses));
           await AsyncStorage.setItem("income", JSON.stringify(currentIncome));
         }
       } catch (err) {
         // Handled silently to avoid terminal spam; uses local storage
       }
+
+      // Check pending SMS confirmations
+      try {
+        const pending = await getPendingSmsConfirmations();
+        setPendingSms(pending);
+      } catch (err) {
+        // Handled silently
+      }
+
+      // Background sync any offline detected transactions
+      syncOfflineSmsQueue().catch(() => {});
 
       setExpenses(currentExpenses);
       setIncome(currentIncome);
@@ -105,9 +149,71 @@ const DashboardScreen = ({ navigation, user }) => {
 
   useEffect(() => {
     loadData();
-    const unsub = navigation.addListener("focus", () => loadData(false));
-    return unsub;
+    const unsubFocus = navigation.addListener("focus", () => loadData(false));
+    const unsubSms = addSmsListener(async (event) => {
+      try {
+        const updated = await getPendingSmsConfirmations();
+        setPendingSms(updated);
+        if (event === "transaction_confirmed") {
+          loadData(false);
+        }
+      } catch (err) {
+        // Handled silently
+      }
+    });
+
+    return () => {
+      unsubFocus();
+      unsubSms();
+    };
   }, [navigation, user]);
+
+  const handleConfirmSms = async (item) => {
+    try {
+      setProcessingSmsId(item.fingerprint);
+      const res = await confirmSmsTransaction(item);
+      if (res.success) {
+        invalidateAIInsightCache();
+        await loadData(false);
+      } else {
+        Alert.alert("Error", "Could not confirm transaction: " + (res.error || "Unknown"));
+      }
+    } catch (err) {
+      Alert.alert("Error", "Could not confirm transaction: " + err.message);
+    } finally {
+      setProcessingSmsId(null);
+    }
+  };
+
+  const handleIgnoreSms = async (fingerprint) => {
+    await ignoreSmsTransaction(fingerprint);
+    const updated = await getPendingSmsConfirmations();
+    setPendingSms(updated);
+  };
+
+  const handleProcessQuickSms = async () => {
+    if (!quickSmsInput.trim()) {
+      Alert.alert("Empty Input", "Please paste your bank or UPI SMS message.");
+      return;
+    }
+    const res = await processIncomingSms(quickSmsInput);
+    if (res.success) {
+      setShowQuickSmsModal(false);
+      setQuickSmsInput("");
+      const pending = await getPendingSmsConfirmations();
+      setPendingSms(pending);
+      Alert.alert(
+        "Transaction Detected!",
+        `Detected ${res.transaction.type === 'expense' ? 'Debit' : 'Credit'} of ₹${res.transaction.amount}.\n\nTap [Confirm] on the card above your balance to add it to your ledger!`,
+        [{ text: "OK" }]
+      );
+    } else {
+      Alert.alert(
+        "Could Not Detect Transaction",
+        res.reason || "Please ensure the text contains a financial transaction (amount and debit/credit)."
+      );
+    }
+  };
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -121,7 +227,7 @@ const DashboardScreen = ({ navigation, user }) => {
     0
   );
   const totalIncome = income.reduce((s, i) => s + (Number(i.amount) || 0), 0);
-  const balance = totalIncome - totalExpense;
+  const balance = Math.max(0, totalIncome - totalExpense);
   const totalBalance = balance;
 
   // Safe to spend calculation
@@ -369,20 +475,136 @@ const DashboardScreen = ({ navigation, user }) => {
             </Text>
           </View>
 
-          <TouchableOpacity
-            onPress={() => navigation.navigate("Settings")}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel="View profile and settings"
-          >
-            <Avatar.Text
-              size={44}
-              label={avatarLetter}
-              style={[styles.avatar, { backgroundColor: brand.emerald }]}
-              color="#FFFFFF"
-            />
-          </TouchableOpacity>
+          <View style={styles.topActionsRow}>
+            <TouchableOpacity
+              onPress={() => setShowQuickSmsModal(true)}
+              style={[
+                styles.quickSmsHeaderBtn,
+                { backgroundColor: theme.colors.surface, borderColor: brand.emerald },
+              ]}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Quick paste bank SMS"
+            >
+              <AppIcon name="message-plus-outline" size={20} color={brand.emerald} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => navigation.navigate("Settings")}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="View profile and settings"
+            >
+              <Avatar.Text
+                size={44}
+                label={avatarLetter}
+                style={[styles.avatar, { backgroundColor: brand.emerald }]}
+                color="#FFFFFF"
+              />
+            </TouchableOpacity>
+          </View>
         </View>
+
+        {/* ================================================== */}
+        {/* AUTOMATIC SMS TRANSACTION CONFIRMATION CARD        */}
+        {/* ================================================== */}
+        {pendingSms.length > 0 && (
+          <View style={styles.smsAlertWrapper}>
+            {pendingSms.slice(0, 3).map((item, idx) => (
+              <View
+                key={item.fingerprint || idx}
+                style={[
+                  styles.smsCard,
+                  {
+                    backgroundColor: theme.colors.surface,
+                    borderColor: brand.emerald,
+                  },
+                ]}
+              >
+                <View style={styles.smsCardHeader}>
+                  <View style={styles.smsCardHeaderLeft}>
+                    <View style={styles.smsPulseDot} />
+                    <Text style={[styles.smsCardTag, { color: brand.emerald }]}>
+                      New transaction detected
+                    </Text>
+                    <View style={styles.smsSourceTag}>
+                      <AppIcon name="message-text-outline" size={12} color={brand.emerald} />
+                      <Text style={styles.smsSourceTagText}>SMS</Text>
+                    </View>
+                  </View>
+                  {pendingSms.length > 1 && idx === 0 && (
+                    <Text style={[styles.smsMoreCount, { color: theme.colors.onSurfaceVariant }]}>
+                      +{pendingSms.length - 1} more
+                    </Text>
+                  )}
+                </View>
+
+                <View style={styles.smsCardBody}>
+                  <View style={styles.smsInfoCol}>
+                    <Text
+                      style={[styles.smsMerchantName, { color: theme.colors.onSurface }]}
+                      numberOfLines={1}
+                    >
+                      {item.merchant || item.category || "Unknown Payee"}
+                    </Text>
+                    <Text
+                      style={[styles.smsCategoryMeta, { color: theme.colors.onSurfaceVariant }]}
+                    >
+                      {item.category} • {(item.paymentMethod || "other").toUpperCase()}
+                      {item.externalId ? ` • Ref ${item.externalId.slice(-6)}` : ""}
+                    </Text>
+                  </View>
+                  <Text
+                    style={[
+                      styles.smsAmountText,
+                      { color: item.type === "expense" ? semantic.expense : brand.emerald },
+                    ]}
+                  >
+                    {item.type === "expense" ? "-" : "+"}
+                    {currencySymbol}
+                    {Number(item.amount).toLocaleString("en-IN", {
+                      minimumFractionDigits: 2,
+                    })}
+                  </Text>
+                </View>
+
+                <View style={styles.smsButtonRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.smsBtn,
+                      styles.smsIgnoreBtn,
+                      { borderColor: theme.colors.outline },
+                    ]}
+                    onPress={() => handleIgnoreSms(item.fingerprint)}
+                    disabled={processingSmsId === item.fingerprint}
+                    activeOpacity={0.7}
+                  >
+                    <AppIcon name="close" size={16} color={theme.colors.onSurfaceVariant} />
+                    <Text style={[styles.smsBtnText, { color: theme.colors.onSurfaceVariant }]}>
+                      Ignore
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.smsBtn,
+                      styles.smsConfirmBtn,
+                      { backgroundColor: brand.emerald },
+                    ]}
+                    onPress={() => handleConfirmSms(item)}
+                    disabled={processingSmsId === item.fingerprint}
+                    activeOpacity={0.8}
+                  >
+                    <AppIcon name="check" size={16} color="#FFFFFF" />
+                    <Text style={[styles.smsBtnText, { color: "#FFFFFF", fontWeight: "700" }]}>
+                      {processingSmsId === item.fingerprint ? "Confirming..." : "Confirm"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
 
         {/* ================================================== */}
         {/* 2. TOTAL BALANCE CARD (Midnight Navy Foundation)   */}
@@ -702,6 +924,81 @@ const DashboardScreen = ({ navigation, user }) => {
       >
         <AppIcon name="plus" size={28} color="#FFFFFF" />
       </TouchableOpacity>
+
+      {/* Quick Paste SMS Modal */}
+      <Modal
+        visible={showQuickSmsModal}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setShowQuickSmsModal(false)}
+      >
+        <View style={styles.quickModalOverlay}>
+          <View
+            style={[
+              styles.quickModalCard,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.outline,
+              },
+            ]}
+          >
+            <View style={styles.quickModalHeader}>
+              <View style={styles.quickModalTitleRow}>
+                <AppIcon name="message-text-outline" size={22} color={brand.emerald} />
+                <Text variant="titleMedium" style={{ fontWeight: "700", color: theme.colors.onSurface }}>
+                  Quick Detect SMS
+                </Text>
+              </View>
+              <IconButton
+                icon="close"
+                size={20}
+                onPress={() => setShowQuickSmsModal(false)}
+                iconColor={theme.colors.onSurfaceVariant}
+              />
+            </View>
+
+            <Text style={[styles.quickModalHint, { color: theme.colors.onSurfaceVariant }]}>
+              Paste any bank or UPI transaction SMS you received (e.g. 1 rupee credit) to detect it instantly:
+            </Text>
+
+            <TextInput
+              value={quickSmsInput}
+              onChangeText={setQuickSmsInput}
+              placeholder="e.g. Your A/c XX1234 is credited with Re 1.00 on 05-09-26 via UPI..."
+              placeholderTextColor={theme.colors.onSurfaceVariant}
+              multiline
+              numberOfLines={3}
+              style={[
+                styles.quickSmsTextInput,
+                {
+                  color: theme.colors.onSurface,
+                  backgroundColor: theme.dark ? "#1E293B" : "#F8FAFC",
+                  borderColor: theme.colors.outline,
+                },
+              ]}
+            />
+
+            <View style={styles.quickModalActions}>
+              <Button
+                mode="text"
+                onPress={() => setShowQuickSmsModal(false)}
+                textColor={theme.colors.onSurfaceVariant}
+              >
+                Cancel
+              </Button>
+              <Button
+                mode="contained"
+                onPress={handleProcessQuickSms}
+                buttonColor={brand.emerald}
+                textColor="#FFFFFF"
+                icon="check"
+              >
+                Detect Transaction
+              </Button>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -933,6 +1230,172 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 8,
     elevation: 8,
+  },
+  smsAlertWrapper: {
+    marginBottom: spacing.md,
+  },
+  smsCard: {
+    borderRadius: 16,
+    borderWidth: 1.5,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    shadowColor: brand.emerald,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  smsCardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: spacing.xs + 2,
+  },
+  smsCardHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  smsPulseDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#10B981",
+  },
+  smsCardTag: {
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  smsSourceTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: "rgba(16, 185, 129, 0.12)",
+    marginLeft: 4,
+  },
+  smsSourceTagText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: brand.emerald,
+  },
+  smsMoreCount: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  smsCardBody: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: spacing.md,
+    marginTop: 2,
+  },
+  smsInfoCol: {
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  smsMerchantName: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  smsCategoryMeta: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  smsAmountText: {
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  smsButtonRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  smsBtn: {
+    flex: 1,
+    height: 38,
+    borderRadius: 10,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 6,
+  },
+  smsIgnoreBtn: {
+    borderWidth: 1,
+  },
+  smsConfirmBtn: {
+    elevation: 2,
+  },
+  smsBtnText: {
+    fontSize: 13,
+  },
+  topActionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  quickSmsHeaderBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    justifyContent: "center",
+    alignItems: "center",
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+  },
+  quickModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.65)",
+    justifyContent: "center",
+    paddingHorizontal: spacing.lg,
+  },
+  quickModalCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: spacing.lg,
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+  },
+  quickModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: spacing.xs,
+  },
+  quickModalTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  quickModalHint: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: spacing.md,
+  },
+  quickSmsTextInput: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: spacing.md,
+    fontSize: 14,
+    minHeight: 80,
+    textAlignVertical: "top",
+    marginBottom: spacing.lg,
+  },
+  quickModalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    gap: spacing.sm,
   },
 });
 

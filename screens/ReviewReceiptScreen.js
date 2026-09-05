@@ -101,7 +101,7 @@ const ReviewReceiptScreen = ({ navigation, route }) => {
         (sum, e) => sum + (Number(e.amount) || 0),
         0
       );
-      const currentBal = totalInc - totalExp;
+      const currentBal = Math.max(0, totalInc - totalExp);
 
       if (currentBal <= 0) {
         setIsSaving(false);
