@@ -32,6 +32,20 @@ const userSchema = new mongoose.Schema({
     default: 0,
     min: 0
   },
+  financialProfile: {
+    openingBalance: {
+      type: Number,
+      default: 0,
+    },
+    currentBalance: {
+      type: Number,
+      default: 0,
+    },
+    balanceUpdatedAt: {
+      type: Date,
+      default: Date.now,
+    }
+  },
   profileImage: {
     type: String,
     default: null

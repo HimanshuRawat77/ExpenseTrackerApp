@@ -97,10 +97,8 @@ const TransactionsScreen = () => {
   const deleteItem = async (item) => {
     const mongoId = item._id || (item.id && item.id.length === 24 ? item.id : null);
 
-    // 1. Delete from MongoDB Atlas if it exists remotely
-    if (mongoId) {
-      deleteTransactionInBackend(mongoId);
-    }
+    // 1. Delete from MongoDB Atlas if it exists remotely (and update cached ledger balance)
+    await deleteTransactionInBackend(mongoId, item);
 
     // 2. Delete from local React state and AsyncStorage
     const targetId = item._id || item.id;

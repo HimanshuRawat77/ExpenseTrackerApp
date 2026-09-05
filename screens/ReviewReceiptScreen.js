@@ -23,6 +23,7 @@ import { brand, semantic } from "../src/theme/colors";
 import { spacing } from "../src/theme";
 import { createTransactionInBackend } from "../src/api/transactionApi";
 import { invalidateAIInsightCache } from "../src/api/aiApi";
+import { invalidateAnalyticsCache } from "../src/api/analyticsApi";
 
 const CATEGORIES = [
   "Food",
@@ -140,8 +141,9 @@ const ReviewReceiptScreen = ({ navigation, route }) => {
       const existing = existingRaw ? JSON.parse(existingRaw) : [];
       await AsyncStorage.setItem("expenses", JSON.stringify([...existing, localItem]));
 
-      // 3. Invalidate AI insights cache
+      // 3. Invalidate AI insights cache and analytics cache
       await invalidateAIInsightCache();
+      await invalidateAnalyticsCache();
 
       setIsSaving(false);
       Alert.alert("Success", "Receipt expense confirmed and recorded!", [

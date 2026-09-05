@@ -11,5 +11,6 @@ router.put('/:id', auth, transactionController.update);
 router.delete('/:id', auth, transactionController.remove);
 router.post('/bulk', auth, transactionController.bulkCreate);
 router.post('/sms', auth, transactionController.processSmsTransactions);
+router.post('/process-sms', auth, transactionController.processSmsTransactions);
 
 module.exports = router;

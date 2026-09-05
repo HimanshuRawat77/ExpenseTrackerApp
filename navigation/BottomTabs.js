@@ -6,7 +6,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import DashboardScreen from "../screens/DashboardScreen";
 import TransactionScreen from "../screens/TransactionScreen";
-import FinancialNewsScreen from "../screens/FinancialNewsScreen";
+import AnalyticsScreen from "../screens/AnalyticsScreen";
 import SettingsScreen from "../screens/SettingsScreen";
 import { AppIcon } from "../src/components";
 import { brand } from "../src/theme/colors";
@@ -142,16 +142,16 @@ export default function BottomTabs({
         })}
       />
 
-      {/* 4. MARKETS & DAILY FINANCIAL NEWS */}
+      {/* 4. FINANCIAL ANALYTICS */}
       <Tab.Screen
-        name="Markets"
-        component={FinancialNewsScreen}
+        name="Analytics"
+        component={AnalyticsScreen}
         options={{
-          tabBarLabel: "Markets",
-          tabBarAccessibilityLabel: "Daily financial news, gold, silver, and stock market rates",
+          tabBarLabel: "Analytics",
+          tabBarAccessibilityLabel: "Financial analytics and charts",
           tabBarIcon: ({ color, focused }) => (
             <AppIcon
-              name={focused ? "newspaper-variant" : "newspaper-variant-outline"}
+              name={focused ? "chart-timeline-variant-shimmer" : "chart-timeline-variant"}
               size={24}
               color={color}
             />

@@ -1,11 +1,67 @@
 const Transaction = require('../models/Transaction');
+const User = require('../models/User');
 const apiResponse = require('../utils/apiResponse');
+
+/**
+ * Atomically adjust user's ledger balance in MongoDB.
+ * Ensures financialProfile is initialized if missing on legacy documents.
+ */
+async function adjustUserBalance(userId, delta) {
+  if (typeof delta !== 'number' || isNaN(delta) || !isFinite(delta) || delta === 0) {
+    const user = await User.findById(userId).select('financialProfile');
+    return user?.financialProfile || null;
+  }
+
+  // Atomically increment currentBalance
+  let updatedUser = await User.findOneAndUpdate(
+    { _id: userId, 'financialProfile.currentBalance': { $type: 'number' } },
+    {
+      $inc: { 'financialProfile.currentBalance': delta },
+      $set: { 'financialProfile.balanceUpdatedAt': new Date() }
+    },
+    { new: true }
+  ).select('financialProfile');
+
+  // Fallback in case user document was created prior to financialProfile subdocument
+  if (!updatedUser || !updatedUser.financialProfile || typeof updatedUser.financialProfile.currentBalance !== 'number') {
+    const user = await User.findById(userId);
+    if (user) {
+      if (!user.financialProfile) {
+        user.financialProfile = {
+          openingBalance: 0,
+          currentBalance: 0,
+          balanceUpdatedAt: new Date(),
+        };
+      }
+      if (typeof user.financialProfile.currentBalance !== 'number') {
+        user.financialProfile.currentBalance = typeof user.financialProfile.openingBalance === 'number'
+          ? user.financialProfile.openingBalance
+          : 0;
+      }
+      user.financialProfile.currentBalance += delta;
+      user.financialProfile.balanceUpdatedAt = new Date();
+      await user.save();
+      updatedUser = user;
+    }
+  }
+
+  return updatedUser ? updatedUser.financialProfile : null;
+}
 
 exports.create = async (req, res, next) => {
   try {
     req.body.userId = req.userId;
     const transaction = await Transaction.create(req.body);
-    return apiResponse.success(res, 201, 'Transaction created successfully', transaction);
+
+    const delta = transaction.type === 'expense' ? -Number(transaction.amount) : Number(transaction.amount);
+    const financialProfile = await adjustUserBalance(req.userId, delta);
+
+    const txData = transaction.toJSON ? transaction.toJSON() : transaction;
+    return apiResponse.success(res, 201, 'Transaction created successfully', {
+      ...txData,
+      financialProfile,
+      currentBalance: financialProfile?.currentBalance
+    });
   } catch (error) {
     next(error);
   }
@@ -73,6 +129,11 @@ exports.getOne = async (req, res, next) => {
 
 exports.update = async (req, res, next) => {
   try {
+    const existingTx = await Transaction.findOne({ _id: req.params.id, userId: req.userId });
+    if (!existingTx) {
+      return apiResponse.error(res, 404, 'Transaction not found');
+    }
+
     const allowedFields = ['type', 'amount', 'currency', 'category', 'merchant', 'description', 'date', 'paymentMethod', 'source'];
     const updateData = {};
     for (const field of allowedFields) {
@@ -87,11 +148,18 @@ exports.update = async (req, res, next) => {
       { new: true, runValidators: true }
     );
 
-    if (!transaction) {
-      return apiResponse.error(res, 404, 'Transaction not found');
-    }
+    const oldDelta = existingTx.type === 'expense' ? -Number(existingTx.amount) : Number(existingTx.amount);
+    const newDelta = transaction.type === 'expense' ? -Number(transaction.amount) : Number(transaction.amount);
+    const balanceAdjustment = newDelta - oldDelta;
 
-    return apiResponse.success(res, 200, 'Transaction updated successfully', transaction);
+    const financialProfile = await adjustUserBalance(req.userId, balanceAdjustment);
+    const txData = transaction.toJSON ? transaction.toJSON() : transaction;
+
+    return apiResponse.success(res, 200, 'Transaction updated successfully', {
+      ...txData,
+      financialProfile,
+      currentBalance: financialProfile?.currentBalance
+    });
   } catch (error) {
     next(error);
   }
@@ -103,7 +171,14 @@ exports.remove = async (req, res, next) => {
     if (!transaction) {
       return apiResponse.error(res, 404, 'Transaction not found');
     }
-    return apiResponse.success(res, 200, 'Transaction deleted successfully');
+
+    const balanceAdjustment = transaction.type === 'expense' ? Number(transaction.amount) : -Number(transaction.amount);
+    const financialProfile = await adjustUserBalance(req.userId, balanceAdjustment);
+
+    return apiResponse.success(res, 200, 'Transaction deleted successfully', {
+      financialProfile,
+      currentBalance: financialProfile?.currentBalance
+    });
   } catch (error) {
     next(error);
   }
@@ -117,8 +192,19 @@ exports.bulkCreate = async (req, res, next) => {
     
     const transactions = req.body.transactions.map(t => ({ ...t, userId: req.userId }));
     const created = await Transaction.insertMany(transactions);
+
+    let netBalanceChange = 0;
+    created.forEach(t => {
+      netBalanceChange += t.type === 'expense' ? -Number(t.amount) : Number(t.amount);
+    });
     
-    return apiResponse.success(res, 201, `${created.length} transactions created successfully`, { count: created.length });
+    const financialProfile = await adjustUserBalance(req.userId, netBalanceChange);
+    
+    return apiResponse.success(res, 201, `${created.length} transactions created successfully`, {
+      count: created.length,
+      financialProfile,
+      currentBalance: financialProfile?.currentBalance
+    });
   } catch (error) {
     next(error);
   }
@@ -196,10 +282,24 @@ exports.processSmsTransactions = async (req, res, next) => {
       }
     }
 
+    let financialProfile = null;
+    if (created.length > 0) {
+      let smsBalanceChange = 0;
+      for (const newTx of created) {
+        smsBalanceChange += newTx.type === 'expense' ? -Number(newTx.amount) : Number(newTx.amount);
+      }
+      financialProfile = await adjustUserBalance(req.userId, smsBalanceChange);
+    } else {
+      const user = await User.findById(req.userId).select('financialProfile');
+      financialProfile = user?.financialProfile || null;
+    }
+
     return apiResponse.success(res, 201, `Processed ${rawItems.length} SMS transactions: ${created.length} created, ${duplicates.length} duplicates, ${failed.length} failed`, {
       created,
       duplicates,
       failed,
+      financialProfile,
+      currentBalance: financialProfile?.currentBalance,
       summary: {
         total: rawItems.length,
         createdCount: created.length,

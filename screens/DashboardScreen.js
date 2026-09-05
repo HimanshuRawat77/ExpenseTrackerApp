@@ -24,6 +24,7 @@ import {
   getTransactionsFromBackend,
   deleteTransactionInBackend,
 } from "../src/api/transactionApi";
+import { getMeFromBackend } from "../src/api/authApi";
 import {
   getPendingSmsConfirmations,
   confirmSmsTransaction,
@@ -71,6 +72,17 @@ const DashboardScreen = ({ navigation, user }) => {
 
       if (savedUser) setCurrentUser(JSON.parse(savedUser));
       else if (user) setCurrentUser(user);
+
+      // Fetch fresh user profile with financialProfile from backend
+      try {
+        const freshUser = await getMeFromBackend();
+        if (freshUser) {
+          setCurrentUser(freshUser);
+          await AsyncStorage.setItem("currentUser", JSON.stringify(freshUser));
+        }
+      } catch (userErr) {
+        // Fallback to cached
+      }
 
       let currentExpenses = savedExpenses ? JSON.parse(savedExpenses) : [];
       let currentIncome = savedIncome ? JSON.parse(savedIncome) : [];
@@ -227,8 +239,21 @@ const DashboardScreen = ({ navigation, user }) => {
     0
   );
   const totalIncome = income.reduce((s, i) => s + (Number(i.amount) || 0), 0);
-  const balance = Math.max(0, totalIncome - totalExpense);
-  const totalBalance = balance;
+
+  // Authoritative Current Bank Balance from financial profile
+  const financialProfile = currentUser?.financialProfile;
+  const currentBalance = typeof financialProfile?.currentBalance === "number"
+    ? financialProfile.currentBalance
+    : typeof currentUser?.balance === "number"
+    ? currentUser.balance
+    : Math.max(0, totalIncome - totalExpense);
+  const balance = currentBalance;
+  const totalBalance = currentBalance;
+
+  // Monthly Overview Analytics
+  const monthlySpent = totalExpense;
+  const monthlyIncoming = totalIncome;
+  const monthlySavings = monthlyIncoming - monthlySpent;
 
   // Safe to spend calculation
   const now = new Date();
@@ -245,7 +270,7 @@ const DashboardScreen = ({ navigation, user }) => {
   const discretionary = totalIncome - totalExpense - savingsTarget;
   const safeToSpendToday = Math.max(
     0,
-    discretionary > 0 ? discretionary / daysRemaining : balance > 0 ? balance / daysRemaining : 0
+    discretionary > 0 ? discretionary / daysRemaining : currentBalance > 0 ? currentBalance / daysRemaining : 0
   );
 
   // Real-data AI insight calculation
@@ -393,8 +418,26 @@ const DashboardScreen = ({ navigation, user }) => {
           onPress: async () => {
             const mongoId =
               item._id || (item.id && item.id.length === 24 ? item.id : null);
-            if (mongoId) {
-              deleteTransactionInBackend(mongoId);
+            await deleteTransactionInBackend(mongoId, item);
+
+            const restoreDelta =
+              item.type === "expense"
+                ? Number(item.amount) || 0
+                : -(Number(item.amount) || 0);
+
+            if (restoreDelta !== 0) {
+              setCurrentUser((prev) => {
+                if (!prev) return prev;
+                const oldBal = prev.financialProfile?.currentBalance ?? 0;
+                return {
+                  ...prev,
+                  financialProfile: {
+                    ...prev.financialProfile,
+                    currentBalance: oldBal + restoreDelta,
+                    balanceUpdatedAt: new Date().toISOString(),
+                  },
+                };
+              });
             }
 
             const targetId = item._id || item.id;
@@ -607,44 +650,7 @@ const DashboardScreen = ({ navigation, user }) => {
         )}
 
         {/* ================================================== */}
-        {/* 2. TOTAL BALANCE CARD (Midnight Navy Foundation)   */}
-        {/* ================================================== */}
-        <View
-          style={[
-            styles.balanceCard,
-            {
-              backgroundColor: brand.primary, // #0F172A
-              borderColor: theme.dark ? "#334155" : "#1E293B",
-            },
-          ]}
-          accessibilityRole="summary"
-          accessibilityLabel={`Total balance: ${currencySymbol}${balance.toFixed(2)}`}
-        >
-          <View style={styles.balanceHeader}>
-            <Text style={styles.balanceLabel}>Total Balance</Text>
-            <View style={styles.statusBadge}>
-              <AppIcon name="shield-check" size={13} color="#10B981" />
-              <Text style={styles.statusBadgeText}>Real-Time</Text>
-            </View>
-          </View>
-
-          <Text style={styles.balanceValue}>
-            {currencySymbol}
-            {balance.toLocaleString("en-IN", {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })}
-          </Text>
-
-          <View style={styles.balanceFooter}>
-            <Text style={styles.balanceFooterText}>
-              {currency} Account Ledger
-            </Text>
-          </View>
-        </View>
-
-        {/* ================================================== */}
-        {/* TODAY'S OVERVIEW (Incoming & Spent)               */}
+        {/* 1. TODAY'S OVERVIEW (Incoming & Spent)               */}
         {/* ================================================== */}
         <View style={styles.todaySection}>
           <View style={styles.todayHeaderRow}>
@@ -674,47 +680,6 @@ const DashboardScreen = ({ navigation, user }) => {
           </View>
 
           <View style={styles.todayCardsRow}>
-            {/* Today's Incoming Card */}
-            <View
-              style={[
-                styles.todayCard,
-                {
-                  backgroundColor: theme.colors.surface,
-                  borderColor: theme.colors.outline,
-                },
-              ]}
-            >
-              <View style={styles.todayCardTop}>
-                <View
-                  style={[
-                    styles.todayIconWrapper,
-                    { backgroundColor: "rgba(34, 197, 94, 0.14)" },
-                  ]}
-                >
-                  <AppIcon
-                    name="arrow-bottom-left"
-                    size={16}
-                    color={semantic.income}
-                  />
-                </View>
-                <Text
-                  style={[
-                    styles.todayCardLabel,
-                    { color: theme.colors.onSurfaceVariant },
-                  ]}
-                >
-                  Today's In
-                </Text>
-              </View>
-              <Text style={[styles.todayCardAmount, { color: semantic.income }]}>
-                +{currencySymbol}
-                {todaysIncome.toLocaleString("en-IN", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
-              </Text>
-            </View>
-
             {/* Today's Spent Card */}
             <View
               style={[
@@ -744,12 +709,53 @@ const DashboardScreen = ({ navigation, user }) => {
                     { color: theme.colors.onSurfaceVariant },
                   ]}
                 >
-                  Today's Spent
+                  Spent Today
                 </Text>
               </View>
               <Text style={[styles.todayCardAmount, { color: semantic.expense }]}>
-                -{currencySymbol}
+                {currencySymbol}
                 {todaysSpent.toLocaleString("en-IN", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </Text>
+            </View>
+
+            {/* Today's Incoming Card */}
+            <View
+              style={[
+                styles.todayCard,
+                {
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.outline,
+                },
+              ]}
+            >
+              <View style={styles.todayCardTop}>
+                <View
+                  style={[
+                    styles.todayIconWrapper,
+                    { backgroundColor: "rgba(34, 197, 94, 0.14)" },
+                  ]}
+                >
+                  <AppIcon
+                    name="arrow-bottom-left"
+                    size={16}
+                    color={semantic.income}
+                  />
+                </View>
+                <Text
+                  style={[
+                    styles.todayCardLabel,
+                    { color: theme.colors.onSurfaceVariant },
+                  ]}
+                >
+                  Incoming Today
+                </Text>
+              </View>
+              <Text style={[styles.todayCardAmount, { color: semantic.income }]}>
+                {currencySymbol}
+                {todaysIncome.toLocaleString("en-IN", {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
                 })}
@@ -759,23 +765,135 @@ const DashboardScreen = ({ navigation, user }) => {
         </View>
 
         {/* ================================================== */}
-        {/* 3. INCOME & EXPENSES CARDS                         */}
+        {/* 2. MONTHLY OVERVIEW (Spent, Incoming, Savings)     */}
         {/* ================================================== */}
-        <View style={styles.incomeExpenseRow}>
-          <StatCard
-            label="Income"
-            amount={totalIncome}
-            currencySymbol={currencySymbol}
-            type="income"
-            style={{ marginRight: spacing.xs + 2 }}
-          />
-          <StatCard
-            label="Expenses"
-            amount={totalExpense}
-            currencySymbol={currencySymbol}
-            type="expense"
-            style={{ marginLeft: spacing.xs + 2 }}
-          />
+        <View style={styles.monthlySection}>
+          <View style={styles.todayHeaderRow}>
+            <View style={styles.todayHeaderLeft}>
+              <AppIcon name="chart-box-outline" size={15} color={brand.emerald} />
+              <Text
+                style={[
+                  styles.todayTitle,
+                  { color: theme.colors.onSurface },
+                ]}
+              >
+                Monthly Overview
+              </Text>
+            </View>
+            <Text
+              style={[
+                styles.todayDateText,
+                { color: theme.colors.onSurfaceVariant },
+              ]}
+            >
+              {new Date().toLocaleDateString("en-IN", {
+                month: "short",
+                year: "numeric",
+              })}
+            </Text>
+          </View>
+
+          <View style={styles.monthlyCardsRow}>
+            {/* Monthly Spent */}
+            <View
+              style={[
+                styles.monthlyCard,
+                {
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.outline,
+                },
+              ]}
+            >
+              <Text style={[styles.monthlyCardLabel, { color: theme.colors.onSurfaceVariant }]}>
+                Spent
+              </Text>
+              <Text style={[styles.monthlyCardValue, { color: semantic.expense }]}>
+                {currencySymbol}
+                {monthlySpent.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+              </Text>
+            </View>
+
+            {/* Monthly Incoming */}
+            <View
+              style={[
+                styles.monthlyCard,
+                {
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.outline,
+                },
+              ]}
+            >
+              <Text style={[styles.monthlyCardLabel, { color: theme.colors.onSurfaceVariant }]}>
+                Incoming
+              </Text>
+              <Text style={[styles.monthlyCardValue, { color: semantic.income }]}>
+                {currencySymbol}
+                {monthlyIncoming.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+              </Text>
+            </View>
+
+            {/* Monthly Savings */}
+            <View
+              style={[
+                styles.monthlyCard,
+                {
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.outline,
+                },
+              ]}
+            >
+              <Text style={[styles.monthlyCardLabel, { color: theme.colors.onSurfaceVariant }]}>
+                Savings
+              </Text>
+              <Text
+                style={[
+                  styles.monthlyCardValue,
+                  { color: monthlySavings >= 0 ? brand.emerald : semantic.expense },
+                ]}
+              >
+                {currencySymbol}
+                {monthlySavings.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* ================================================== */}
+        {/* 3. YOUR BALANCE CARD (Midnight Navy Foundation)     */}
+        {/* ================================================== */}
+        <View
+          style={[
+            styles.balanceCard,
+            {
+              backgroundColor: brand.primary, // #0F172A
+              borderColor: theme.dark ? "#334155" : "#1E293B",
+            },
+          ]}
+          accessibilityRole="summary"
+          accessibilityLabel={`Your balance: ${currencySymbol}${currentBalance.toFixed(2)}`}
+        >
+          <View style={styles.balanceHeader}>
+            <Text style={styles.balanceLabel}>Your Balance</Text>
+            <View style={styles.statusBadge}>
+              <AppIcon name="shield-check" size={13} color="#10B981" />
+              <Text style={styles.statusBadgeText}>Bank Ledger</Text>
+            </View>
+          </View>
+
+          <Text style={styles.balanceValue}>
+            {currencySymbol}
+            {currentBalance.toLocaleString("en-IN", {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}
+          </Text>
+
+          <View style={styles.balanceFooter}>
+            <Text style={styles.balanceFooterText}>
+              Opening Balance: {currencySymbol}
+              {(financialProfile?.openingBalance ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+            </Text>
+          </View>
         </View>
 
         {/* ================================================== */}
@@ -1142,6 +1260,32 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
     letterSpacing: -0.3,
+  },
+  monthlySection: {
+    marginBottom: spacing.lg,
+  },
+  monthlyCardsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: spacing.xs,
+  },
+  monthlyCard: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "center",
+  },
+  monthlyCardLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  monthlyCardValue: {
+    fontSize: 15,
+    fontWeight: "800",
+    letterSpacing: -0.2,
   },
   incomeExpenseRow: {
     flexDirection: "row",

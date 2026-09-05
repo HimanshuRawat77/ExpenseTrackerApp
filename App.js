@@ -12,6 +12,8 @@ import BottomTabs from "./navigation/BottomTabs";
 import SettingsScreen from "./screens/SettingsScreen";
 import AddTransactionScreen from "./screens/AddTransactionScreen";
 import ReviewReceiptScreen from "./screens/ReviewReceiptScreen";
+import BalanceOnboardingScreen from "./screens/BalanceOnboardingScreen";
+import FinancialNewsScreen from "./screens/FinancialNewsScreen";
 import {
   paperLightTheme,
   paperDarkTheme,
@@ -165,6 +167,7 @@ export default function App() {
         email: mongoUser.email,
         currency: mongoUser.preferredCurrency || currency,
         budget: String(mongoUser.monthlyBudget || budget),
+        needsBalanceOnboarding: true,
       };
 
       await AsyncStorage.setItem(`user_${email.toLowerCase()}`, JSON.stringify({ ...userData, password }));
@@ -186,6 +189,7 @@ export default function App() {
         password,
         currency,
         budget,
+        needsBalanceOnboarding: true,
       };
 
       await AsyncStorage.setItem(
@@ -231,45 +235,75 @@ export default function App() {
 
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           {user ? (
-            <>
-              <Stack.Screen name="Home">
+            user.needsBalanceOnboarding ? (
+              <Stack.Screen name="BalanceOnboarding">
                 {(props) => (
-                  <BottomTabs
+                  <BalanceOnboardingScreen
                     {...props}
-                    user={user}
-                    income={income}
-                    expenses={expenses}
-                    onLogout={handleLogout}
-                    onAddExpense={handleAddExpense}
-                    onAddIncome={handleAddIncome}
-                    isDarkMode={isDarkMode}
-                    onSetIsDarkMode={handleSetIsDarkMode}
+                    route={{ params: { currency: user.currency || "INR" } }}
+                    onComplete={(financialProfile) => {
+                      const updated = {
+                        ...user,
+                        financialProfile,
+                        needsBalanceOnboarding: false,
+                      };
+                      setUser(updated);
+                      AsyncStorage.setItem("currentUser", JSON.stringify(updated));
+                    }}
                   />
                 )}
               </Stack.Screen>
+            ) : (
+              <>
+                <Stack.Screen name="Home">
+                  {(props) => (
+                    <BottomTabs
+                      {...props}
+                      user={user}
+                      income={income}
+                      expenses={expenses}
+                      onLogout={handleLogout}
+                      onAddExpense={handleAddExpense}
+                      onAddIncome={handleAddIncome}
+                      isDarkMode={isDarkMode}
+                      onSetIsDarkMode={handleSetIsDarkMode}
+                    />
+                  )}
+                </Stack.Screen>
 
-              <Stack.Screen
-                name="AddTransaction"
-                component={AddTransactionScreen}
-              />
+                <Stack.Screen
+                  name="AddTransaction"
+                  component={AddTransactionScreen}
+                />
 
-              <Stack.Screen
-                name="ReviewReceipt"
-                component={ReviewReceiptScreen}
-              />
+                <Stack.Screen
+                  name="ReviewReceipt"
+                  component={ReviewReceiptScreen}
+                />
 
-              <Stack.Screen name="Settings">
-                {(props) => (
-                  <SettingsScreen
-                    {...props}
-                    user={user}
-                    onLogout={handleLogout}
-                    isDarkMode={isDarkMode}
-                    onSetIsDarkMode={handleSetIsDarkMode}
-                  />
-                )}
-              </Stack.Screen>
-            </>
+                <Stack.Screen name="Settings">
+                  {(props) => (
+                    <SettingsScreen
+                      {...props}
+                      user={user}
+                      onLogout={handleLogout}
+                      isDarkMode={isDarkMode}
+                      onSetIsDarkMode={handleSetIsDarkMode}
+                    />
+                  )}
+                </Stack.Screen>
+
+                <Stack.Screen
+                  name="Markets"
+                  component={FinancialNewsScreen}
+                />
+
+                <Stack.Screen
+                  name="BalanceOnboarding"
+                  component={BalanceOnboardingScreen}
+                />
+              </>
+            )
           ) : (
             <>
               <Stack.Screen name="Login">

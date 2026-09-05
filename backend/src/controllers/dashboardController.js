@@ -29,7 +29,15 @@ exports.getSummary = async (req, res, next) => {
       if (t._id === 'expense') totalExpenses = t.total;
     });
 
-    const balance = Math.max(0, totalIncome - totalExpenses);
+    // Financial Profile from User model
+    const userDoc = await User.findById(req.userId).select('financialProfile preferredCurrency monthlyBudget');
+    const financialProfile = userDoc?.financialProfile || {
+      openingBalance: 0,
+      currentBalance: 0,
+      balanceUpdatedAt: new Date()
+    };
+    const currentBalance = financialProfile.currentBalance ?? 0;
+    const monthlySavings = totalIncome - totalExpenses;
 
     // Previous month totals
     const prevTotals = await Transaction.aggregate([
@@ -74,7 +82,10 @@ exports.getSummary = async (req, res, next) => {
     return apiResponse.success(res, 200, 'Dashboard summary retrieved', {
       totalIncome,
       totalExpenses,
-      balance,
+      monthlySavings,
+      currentBalance,
+      balance: currentBalance,
+      financialProfile,
       categoryBreakdown,
       recentTransactions,
       avgDailySpending,

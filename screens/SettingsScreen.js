@@ -23,12 +23,14 @@ import {
   Menu,
   Icon,
   Chip,
+  TextInput as PaperTextInput,
 } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppHeader } from "../src/components";
 import { brand, semantic } from "../src/theme/colors";
 import { spacing } from "../src/theme";
+import { updateFinancialProfileInBackend } from "../src/api/authApi";
 import {
   isSmsTrackingEnabled,
   setSmsTrackingEnabled,
@@ -47,6 +49,10 @@ const SettingsScreen = ({
 }) => {
   const theme = useTheme();
   const [currency, setCurrency] = useState("INR");
+  const [currentUserState, setCurrentUserState] = useState(user || null);
+  const [showBalanceModal, setShowBalanceModal] = useState(false);
+  const [newBalanceInput, setNewBalanceInput] = useState("");
+  const [savingBalance, setSavingBalance] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [isSmsEnabled, setIsSmsEnabled] = useState(false);
@@ -75,9 +81,50 @@ const SettingsScreen = ({
       }
     };
 
+    const loadUserData = async () => {
+      try {
+        const saved = await AsyncStorage.getItem("currentUser");
+        if (saved) setCurrentUserState(JSON.parse(saved));
+      } catch (e) {}
+    };
+
+    loadUserData();
     loadCurrency();
     loadSmsSettings();
-  }, []);
+  }, [user]);
+
+  const handleSaveStartingBalance = async () => {
+    const cleanAmount = Number(newBalanceInput.replace(/,/g, "").trim());
+    if (isNaN(cleanAmount) || !isFinite(cleanAmount) || cleanAmount < 0) {
+      Alert.alert("Invalid Amount", "Please enter a valid, positive balance amount.");
+      return;
+    }
+
+    setSavingBalance(true);
+    try {
+      const res = await updateFinancialProfileInBackend(cleanAmount);
+      if (res.success) {
+        setShowBalanceModal(false);
+        setNewBalanceInput("");
+        const updatedUser = {
+          ...(currentUserState || {}),
+          financialProfile: res.financialProfile,
+        };
+        setCurrentUserState(updatedUser);
+        await AsyncStorage.setItem("currentUser", JSON.stringify(updatedUser));
+        Alert.alert(
+          "Balance Updated",
+          `Starting opening balance set to ${currency} ${formatAmount(res.financialProfile.openingBalance)}. Current balance is ${currency} ${formatAmount(res.financialProfile.currentBalance)}.`
+        );
+      } else {
+        Alert.alert("Error", res.error || "Failed to update starting balance.");
+      }
+    } catch (e) {
+      Alert.alert("Error", "Could not connect to server to update balance.");
+    } finally {
+      setSavingBalance(false);
+    }
+  };
 
   const handleToggleSmsTracking = async (val) => {
     if (val) {
@@ -339,6 +386,92 @@ const SettingsScreen = ({
           <Text variant="bodyMedium" style={[styles.email, { color: theme.colors.onSurfaceVariant }]}>
             {user?.email || "user@expensetracker.local"}
           </Text>
+        </View>
+
+        {/* Financial Ledger Settings Section */}
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.onSurfaceVariant }]}>
+            Financial Settings
+          </Text>
+        </View>
+
+        <View
+          style={[
+            styles.cardGroup,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.outline,
+            },
+          ]}
+        >
+          <List.Item
+            title="Current Balance"
+            description="Authoritative ledger bank balance"
+            descriptionStyle={{ color: theme.colors.onSurfaceVariant }}
+            titleStyle={{ color: theme.colors.onSurface, fontWeight: "600" }}
+            left={() => (
+              <View style={styles.listIconContainer}>
+                <Icon source="wallet-outline" size={22} color={brand.emerald} />
+              </View>
+            )}
+            right={() => (
+              <Text
+                style={{
+                  fontSize: 16,
+                  fontWeight: "700",
+                  color: brand.emerald,
+                  alignSelf: "center",
+                  marginRight: 8,
+                }}
+              >
+                {currency} {formatAmount(currentUserState?.financialProfile?.currentBalance ?? 0)}
+              </Text>
+            )}
+            style={styles.listItem}
+          />
+          <List.Item
+            title="Opening Starting Balance"
+            description={`Base: ${currency} ${formatAmount(currentUserState?.financialProfile?.openingBalance ?? 0)}`}
+            descriptionStyle={{ color: theme.colors.onSurfaceVariant }}
+            titleStyle={{ color: theme.colors.onSurface, fontWeight: "500" }}
+            left={() => (
+              <View style={styles.listIconContainer}>
+                <Icon source="bank-outline" size={22} color={brand.emerald} />
+              </View>
+            )}
+            right={() => (
+              <Button
+                mode="text"
+                textColor={brand.emerald}
+                compact
+                onPress={() => {
+                  setNewBalanceInput(
+                    String(currentUserState?.financialProfile?.openingBalance ?? 0)
+                  );
+                  setShowBalanceModal(true);
+                }}
+              >
+                Update
+              </Button>
+            )}
+            style={styles.listItem}
+          />
+          {currentUserState?.financialProfile?.balanceUpdatedAt && (
+            <List.Item
+              title="Balance Last Updated"
+              description={new Date(
+                currentUserState.financialProfile.balanceUpdatedAt
+              ).toLocaleString()}
+              descriptionStyle={{ color: theme.colors.onSurfaceVariant }}
+              titleStyle={{ color: theme.colors.onSurface, fontWeight: "500" }}
+              left={() => (
+                <View style={styles.listIconContainer}>
+                  <Icon source="clock-outline" size={22} color={theme.colors.onSurfaceVariant} />
+                </View>
+              )}
+              style={styles.listItem}
+            />
+          )}
         </View>
 
         {/* Preferences Section */}
@@ -776,6 +909,68 @@ const SettingsScreen = ({
           </View>
         </View>
       </Modal>
+
+      {/* Update Starting Balance Modal */}
+      <Modal
+        visible={showBalanceModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowBalanceModal(false)}
+      >
+        <View style={styles.centerModalOverlay}>
+          <View
+            style={[
+              styles.balanceModalContainer,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.outline,
+              },
+            ]}
+          >
+            <View style={styles.modalTitleRow}>
+              <Icon source="bank-outline" size={24} color={brand.emerald} />
+              <Text variant="titleMedium" style={[styles.modalTitle, { color: theme.colors.onSurface }]}>
+                Update Starting Balance
+              </Text>
+            </View>
+            <Text style={{ fontSize: 13, color: theme.colors.onSurfaceVariant, marginTop: 8, marginBottom: 16 }}>
+              Adjust your opening bank balance. Your current ledger balance will be automatically recalculated based on your existing transactions.
+            </Text>
+
+            <PaperTextInput
+              mode="outlined"
+              label={`Starting Balance (${currency})`}
+              value={newBalanceInput}
+              onChangeText={setNewBalanceInput}
+              keyboardType="decimal-pad"
+              activeOutlineColor={brand.emerald}
+              textColor={theme.colors.onSurface}
+              style={{ backgroundColor: theme.colors.surface, marginBottom: 20 }}
+            />
+
+            <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 12 }}>
+              <Button
+                mode="outlined"
+                textColor={theme.colors.onSurfaceVariant}
+                onPress={() => setShowBalanceModal(false)}
+                disabled={savingBalance}
+              >
+                Cancel
+              </Button>
+              <Button
+                mode="contained"
+                buttonColor={brand.emerald}
+                textColor="#FFFFFF"
+                loading={savingBalance}
+                disabled={savingBalance}
+                onPress={handleSaveStartingBalance}
+              >
+                Save Balance
+              </Button>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -850,6 +1045,25 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.65)",
     justifyContent: "flex-end",
+  },
+  centerModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.65)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: spacing.lg,
+  },
+  balanceModalContainer: {
+    width: "100%",
+    maxWidth: 400,
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: spacing.xl,
+    elevation: 5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
   },
   modalContainer: {
     maxHeight: "90%",

@@ -212,3 +212,52 @@ exports.deleteAccount = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.updateFinancialProfile = async (req, res, next) => {
+  try {
+    const { openingBalance } = req.body;
+    const cleanBalance = Number(String(openingBalance).replace(/,/g, '').trim());
+
+    if (isNaN(cleanBalance) || !isFinite(cleanBalance) || cleanBalance < 0) {
+      return apiResponse.error(res, 400, 'Opening balance must be a valid, finite non-negative number');
+    }
+
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return apiResponse.error(res, 404, 'User not found');
+    }
+
+    const Transaction = require('../models/Transaction');
+    const transactionCount = await Transaction.countDocuments({ userId: req.userId });
+
+    const oldOpening = (user.financialProfile && typeof user.financialProfile.openingBalance === 'number')
+      ? user.financialProfile.openingBalance
+      : 0;
+
+    let newCurrentBalance = cleanBalance;
+    if (transactionCount > 0) {
+      // If transactions already exist, adjust current balance by the opening balance delta
+      const delta = cleanBalance - oldOpening;
+      const prevCurrent = (user.financialProfile && typeof user.financialProfile.currentBalance === 'number')
+        ? user.financialProfile.currentBalance
+        : oldOpening;
+      newCurrentBalance = prevCurrent + delta;
+    }
+
+    user.financialProfile = {
+      openingBalance: cleanBalance,
+      currentBalance: newCurrentBalance,
+      balanceUpdatedAt: new Date()
+    };
+
+    await user.save();
+
+    return apiResponse.success(res, 200, 'Financial profile updated successfully', {
+      financialProfile: user.financialProfile,
+      user
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

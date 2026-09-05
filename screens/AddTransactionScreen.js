@@ -15,6 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import { AppHeader, AppIcon } from "../src/components";
 import { invalidateAIInsightCache, scanReceiptImage } from "../src/api/aiApi";
+import { invalidateAnalyticsCache } from "../src/api/analyticsApi";
 import {
   createTransactionInBackend,
   getTransactionsFromBackend,
@@ -284,6 +285,7 @@ const AddTransactionScreen = ({ navigation, route }) => {
     else await saveToStorage("income", data);
 
     await invalidateAIInsightCache();
+    await invalidateAnalyticsCache();
 
     setAmount("");
     setCategory("");
