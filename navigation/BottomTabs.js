@@ -2,6 +2,7 @@ import React from "react";
 import { View, StyleSheet, TouchableOpacity } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { useTheme } from "react-native-paper";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import DashboardScreen from "../screens/DashboardScreen";
 import TransactionScreen from "../screens/TransactionScreen";
@@ -116,17 +117,25 @@ export default function BottomTabs({
               activeOpacity={0.8}
               accessibilityLabel="Add transaction"
               accessibilityRole="button"
-              onPress={() => {
-                const totalInc = (income || []).reduce(
-                  (sum, i) => sum + (Number(i.amount) || 0),
-                  0
-                );
-                const totalExp = (expenses || []).reduce(
-                  (sum, e) => sum + (Number(e.amount) || 0),
-                  0
-                );
-                const bal = totalInc - totalExp;
-                navigation.navigate("AddTransaction", { balance: bal });
+              onPress={async () => {
+                try {
+                  const savedExpenses = await AsyncStorage.getItem("expenses");
+                  const savedIncome = await AsyncStorage.getItem("income");
+                  const parsedExpenses = savedExpenses ? JSON.parse(savedExpenses) : [];
+                  const parsedIncome = savedIncome ? JSON.parse(savedIncome) : [];
+                  const totalInc = parsedIncome.reduce(
+                    (sum, i) => sum + (Number(i.amount) || 0),
+                    0
+                  );
+                  const totalExp = parsedExpenses.reduce(
+                    (sum, e) => sum + (Number(e.amount) || 0),
+                    0
+                  );
+                  const bal = totalInc - totalExp;
+                  navigation.navigate("AddTransaction", { balance: bal });
+                } catch (e) {
+                  navigation.navigate("AddTransaction");
+                }
               }}
             />
           ),

@@ -9,7 +9,12 @@ export const createTransactionInBackend = async ({
   amount,
   category,
   notes,
+  description,
   date,
+  merchant = null,
+  paymentMethod = null,
+  source = "manual",
+  aiCategorized = false,
 }) => {
   const token = await AsyncStorage.getItem("authToken");
   if (!token) {
@@ -22,9 +27,12 @@ export const createTransactionInBackend = async ({
       type, // 'expense' or 'income'
       amount: Number(amount),
       category: category.trim(),
-      description: notes ? notes.trim() : "",
+      description: (description || notes || "").trim(),
       date: date || new Date().toISOString(),
-      source: "manual",
+      merchant: merchant ? merchant.trim() : null,
+      paymentMethod: paymentMethod || null,
+      source: source || "manual",
+      aiCategorized: Boolean(aiCategorized),
     };
 
     const response = await fetch(`${baseUrl}/api/transactions`, {
@@ -37,9 +45,10 @@ export const createTransactionInBackend = async ({
     });
 
     const data = await response.json();
-    if (response.ok && data.transaction) {
-      console.log("💾 Transaction saved to MongoDB Atlas:", data.transaction._id);
-      return data.transaction;
+    if (response.ok && (data.transaction || data.data)) {
+      const created = data.transaction || data.data;
+      console.log("💾 Transaction saved to MongoDB Atlas:", created._id);
+      return created;
     } else {
       return null;
     }

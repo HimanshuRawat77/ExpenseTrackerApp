@@ -85,8 +85,8 @@ const DashboardScreen = ({ navigation, user }) => {
       setAiLoading(true);
       getAIInsight({
         forceRefresh: forceRefreshInsight,
-        localExpenses: parsedExpenses,
-        localIncome: parsedIncome,
+        localExpenses: currentExpenses,
+        localIncome: currentIncome,
         currencySymbol: activeSymbol,
       })
         .then((result) => {

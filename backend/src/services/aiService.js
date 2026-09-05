@@ -222,3 +222,215 @@ Return a JSON object adhering strictly to this schema:
   // 3. Deterministic rule fallback
   return generateDeterministicInsight(financialSummary);
 };
+
+/**
+ * Valid supported categories
+ */
+const SUPPORTED_CATEGORIES = [
+  'Food',
+  'Groceries',
+  'Shopping',
+  'Transport',
+  'Bills',
+  'Entertainment',
+  'Health',
+  'Education',
+  'Travel',
+  'Other',
+];
+
+/**
+ * Valid supported payment methods
+ */
+const SUPPORTED_PAYMENT_METHODS = [
+  'cash',
+  'upi',
+  'card',
+  'bank_transfer',
+  'wallet',
+  'other',
+];
+
+/**
+ * Sanitize and validate extracted receipt data
+ */
+const sanitizeReceiptData = (raw) => {
+  if (!raw || typeof raw !== 'object') {
+    return {
+      merchant: null,
+      amount: null,
+      currency: 'INR',
+      date: null,
+      category: 'Other',
+      paymentMethod: null,
+      description: '',
+      confidence: 0,
+    };
+  }
+
+  // Merchant
+  let merchant = typeof raw.merchant === 'string' && raw.merchant.trim().length > 0
+    ? raw.merchant.trim().slice(0, 100)
+    : null;
+
+  // Amount
+  let amount = null;
+  if (raw.amount !== null && raw.amount !== undefined) {
+    const parsed = typeof raw.amount === 'number' ? raw.amount : parseFloat(String(raw.amount).replace(/[^0-9.]/g, ''));
+    if (!isNaN(parsed) && parsed > 0 && isFinite(parsed)) {
+      amount = Math.round(parsed * 100) / 100;
+    }
+  }
+
+  // Currency
+  let currency = 'INR';
+  if (typeof raw.currency === 'string' && raw.currency.trim().length > 0) {
+    const cur = raw.currency.trim().toUpperCase();
+    if (['INR', 'USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY'].includes(cur)) {
+      currency = cur;
+    }
+  }
+
+  // Date
+  let date = null;
+  if (typeof raw.date === 'string' && raw.date.trim().length > 0) {
+    const d = new Date(raw.date.trim());
+    if (!isNaN(d.getTime())) {
+      date = d.toISOString().split('T')[0];
+    }
+  }
+
+  // Category
+  let category = 'Other';
+  if (typeof raw.category === 'string') {
+    const matched = SUPPORTED_CATEGORIES.find(
+      (c) => c.toLowerCase() === raw.category.trim().toLowerCase()
+    );
+    if (matched) category = matched;
+  }
+
+  // Payment Method
+  let paymentMethod = null;
+  if (typeof raw.paymentMethod === 'string') {
+    const pmLower = raw.paymentMethod.trim().toLowerCase();
+    if (SUPPORTED_PAYMENT_METHODS.includes(pmLower)) {
+      paymentMethod = pmLower;
+    }
+  }
+
+  // Description
+  let description = '';
+  if (typeof raw.description === 'string') {
+    description = raw.description.trim().slice(0, 200);
+  }
+
+  return {
+    merchant,
+    amount,
+    currency,
+    date,
+    category,
+    paymentMethod,
+    description,
+  };
+};
+
+/**
+ * Extract structured receipt data from an image buffer or base64 using Gemini Vision
+ */
+exports.extractReceiptData = async ({ buffer, mimeType = 'image/jpeg', base64 = null }) => {
+  const base64Data = base64 || (buffer ? buffer.toString('base64') : null);
+  if (!base64Data) {
+    throw new Error('No image data provided for receipt extraction');
+  }
+
+  const prompt = `You are an expert financial receipt parser. Analyze this receipt image and extract structured transaction details.
+
+Return a strictly valid JSON object adhering to this schema:
+{
+  "merchant": string or null,
+  "amount": number or null,
+  "currency": "INR" | "USD" | "EUR" | "GBP" or null,
+  "date": "YYYY-MM-DD" or null,
+  "category": "Food" | "Groceries" | "Shopping" | "Transport" | "Bills" | "Entertainment" | "Health" | "Education" | "Travel" | "Other" or null,
+  "paymentMethod": "cash" | "upi" | "card" | "bank_transfer" | "wallet" | "other" or null,
+  "description": string or null
+}
+
+Rules:
+1. Extract ONLY information clearly visible in the receipt image.
+2. If any field cannot be confidently identified, return null for that field. Do NOT invent, assume, or hallucinate values.
+3. "amount" must be the final total / grand total paid, as a numeric float or integer (e.g. 599 or 45.50). Never include currency symbols in the amount.
+4. "currency" should default to "INR" if ₹ or Rs or Indian store context is detected.
+5. "date" must be formatted as YYYY-MM-DD. If not visible or legible, return null.
+6. "category" should be the most appropriate category from the allowed list.
+7. "paymentMethod" should be one of the allowed payment methods, or null if not indicated.
+8. "description" should be a brief list of purchased items (max 100 characters) or null.`;
+
+  let lastError = null;
+  const key = config.GEMINI_API_KEY;
+  if (key && typeof key === 'string' && key.trim().length > 15 && !key.includes('your_') && !key.includes('dummy')) {
+    const genAI = new GoogleGenerativeAI(key.trim());
+
+    // Prioritize working Gemini vision model
+    const visionModels = ['gemini-3.6-flash', 'gemini-flash-latest', 'gemini-3.7-flash', 'gemini-2.5-flash'];
+
+    for (const modelName of visionModels) {
+      try {
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: {
+            responseMimeType: 'application/json',
+            temperature: 0.1,
+          },
+        });
+
+        const imagePart = {
+          inlineData: {
+            data: base64Data,
+            mimeType: mimeType,
+          },
+        };
+
+        const result = await model.generateContent([prompt, imagePart]);
+        const responseText = result.response.text();
+        const parsed = JSON.parse(responseText);
+        const sanitized = sanitizeReceiptData(parsed);
+
+        return sanitized;
+      } catch (err) {
+        console.warn(`Gemini model ${modelName} vision call error:`, err.message);
+        lastError = err;
+        // Continue to next candidate model if 404
+        if (err.message.includes('404')) continue;
+        // Break on quota / auth if not a model version issue
+        break;
+      }
+    }
+  }
+
+  if (lastError) {
+    if (
+      lastError.message.includes('429') ||
+      lastError.message.includes('quota') ||
+      lastError.message.includes('RESOURCE_EXHAUSTED')
+    ) {
+      throw new Error(
+        'Gemini API quota exceeded. Please check your Gemini API key quota at Google AI Studio.'
+      );
+    }
+    if (
+      lastError.message.includes('403') ||
+      lastError.message.includes('denied') ||
+      lastError.message.includes('PERMISSION_DENIED')
+    ) {
+      throw new Error(
+        'Gemini API access denied (403). Please verify your GEMINI_API_KEY at https://aistudio.google.com/app/apikey'
+      );
+    }
+  }
+
+  // If Gemini API is unavailable or denied access, throw user-friendly error
+  throw new Error("We couldn't read this receipt clearly. Try taking a clearer photo.");
+};
+

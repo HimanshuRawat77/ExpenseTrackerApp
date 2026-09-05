@@ -37,7 +37,7 @@ const transactionValidation = [
   body('merchant').optional().trim(),
   body('description').optional().trim(),
   body('paymentMethod').optional().isIn(['cash', 'upi', 'card', 'bank_transfer', 'wallet', 'other']).withMessage('Invalid payment method'),
-  body('source').optional().isIn(['manual', 'receipt_scan', 'screenshot_scan', 'recurring', 'imported']).withMessage('Invalid source')
+  body('source').optional().isIn(['manual', 'receipt', 'receipt_scan', 'screenshot_scan', 'recurring', 'imported', 'sms']).withMessage('Invalid source')
 ];
 
 module.exports = {

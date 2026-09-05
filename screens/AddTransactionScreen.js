@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, StyleSheet, ScrollView, TouchableOpacity, Alert } from "react-native";
+import { View, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal } from "react-native";
 import {
   Button,
   Text,
@@ -14,8 +14,11 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import { AppHeader, AppIcon } from "../src/components";
-import { invalidateAIInsightCache } from "../src/api/aiApi";
-import { createTransactionInBackend } from "../src/api/transactionApi";
+import { invalidateAIInsightCache, scanReceiptImage } from "../src/api/aiApi";
+import {
+  createTransactionInBackend,
+  getTransactionsFromBackend,
+} from "../src/api/transactionApi";
 import { brand, semantic } from "../src/theme/colors";
 import { spacing } from "../src/theme";
 
@@ -34,10 +37,33 @@ const AddTransactionScreen = ({ navigation, route }) => {
   useEffect(() => {
     const checkBalance = async () => {
       try {
-        const savedExpenses = await AsyncStorage.getItem("expenses");
-        const savedIncome = await AsyncStorage.getItem("income");
-        const parsedExpenses = savedExpenses ? JSON.parse(savedExpenses) : [];
-        const parsedIncome = savedIncome ? JSON.parse(savedIncome) : [];
+        let savedExpenses = await AsyncStorage.getItem("expenses");
+        let savedIncome = await AsyncStorage.getItem("income");
+        let parsedExpenses = savedExpenses ? JSON.parse(savedExpenses) : [];
+        let parsedIncome = savedIncome ? JSON.parse(savedIncome) : [];
+
+        // If a positive balance was explicitly passed from route params, honor it
+        if (
+          route?.params?.balance !== undefined &&
+          Number(route.params.balance) > 0
+        ) {
+          setBalance(Number(route.params.balance));
+          setIsBalanceLoaded(true);
+          return;
+        }
+
+        // Otherwise, sync fresh transactions from MongoDB backend
+        try {
+          const backendTx = await getTransactionsFromBackend();
+          if (backendTx && Array.isArray(backendTx) && backendTx.length > 0) {
+            parsedExpenses = backendTx.filter((t) => t.type === "expense");
+            parsedIncome = backendTx.filter((t) => t.type === "income");
+            await AsyncStorage.setItem("expenses", JSON.stringify(parsedExpenses));
+            await AsyncStorage.setItem("income", JSON.stringify(parsedIncome));
+          }
+        } catch (err) {
+          // Handled silently, fallback to local storage
+        }
 
         const totalInc = parsedIncome.reduce(
           (sum, i) => sum + (Number(i.amount) || 0),
@@ -52,7 +78,11 @@ const AddTransactionScreen = ({ navigation, route }) => {
         setBalance(currentBal);
         setIsBalanceLoaded(true);
 
-        if (currentBal <= 0) {
+        if (currentBal > 0) {
+          // Balance > 0: Expense is enabled
+          setType("expense");
+        } else {
+          // Balance <= 0: Disable expense and switch to income
           setType("income");
           Alert.alert("Insufficient Balance", "You does not have enough money.");
         }
@@ -61,56 +91,138 @@ const AddTransactionScreen = ({ navigation, route }) => {
       }
     };
 
-    if (route?.params?.balance !== undefined) {
-      if (route.params.balance <= 0) {
-        setType("income");
-        Alert.alert("Insufficient Balance", "You does not have enough money.");
-      }
-    } else {
-      checkBalance();
-    }
+    checkBalance();
   }, [route?.params?.balance]);
 
-  const isZeroBalance = isBalanceLoaded && balance !== null && balance <= 0;
+  // Expense option is enabled IF balance > 0, else disabled
+  const isExpenseDisabled = isBalanceLoaded && balance !== null ? balance <= 0 : false;
 
-  const scanReceipt = async (scanType = "receipt") => {
-    if (isZeroBalance) {
+
+  const promptReceiptSource = () => {
+    if (isExpenseDisabled) {
       Alert.alert("Insufficient Balance", "You does not have enough money.");
       return;
     }
 
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    Alert.alert(
+      "Scan Receipt",
+      "Choose an option to scan your physical receipt:",
+      [
+        {
+          text: "Take Photo",
+          onPress: () => handleCaptureReceipt("camera"),
+        },
+        {
+          text: "Choose from Gallery",
+          onPress: () => handleCaptureReceipt("gallery"),
+        },
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+      ],
+      { cancelable: true }
+    );
+  };
 
-    if (permissionResult.granted === false) {
-      Alert.alert("Permission Required", "Permission to access camera roll is required!");
-      return;
-    }
+  const handleCaptureReceipt = async (source) => {
+    try {
+      let result;
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsEditing: false,
-      quality: 1,
-    });
-
-    if (!result.canceled) {
-      setIsScanning(true);
-      setTimeout(() => {
-        if (scanType === "screenshot") {
-          setType("expense");
-          setAmount("380.00");
-          setCategory("Food");
-          setNotes("UPI payment to Swiggy");
-        } else {
-          setType("expense");
-          setAmount("45.50");
-          setCategory("Groceries");
-          setNotes("Scanned from physical receipt");
+      if (source === "camera") {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== "granted") {
+          Alert.alert(
+            "Camera Permission Denied",
+            "Camera permission is required to photograph your receipt."
+          );
+          return;
         }
-        setIsScanning(false);
-        Alert.alert("Scan Completed", "Extracted transaction details. Please review before saving.");
-      }, 1500);
+
+        result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ["images"],
+          allowsEditing: false,
+          quality: 0.7,
+          base64: true,
+        });
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== "granted") {
+          Alert.alert(
+            "Gallery Permission Denied",
+            "Permission to access your photo gallery is required to choose a receipt."
+          );
+          return;
+        }
+
+        result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ["images"],
+          allowsEditing: false,
+          quality: 0.7,
+          base64: true,
+        });
+      }
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+
+      const asset = result.assets[0];
+
+      if (asset.fileSize && asset.fileSize > 10 * 1024 * 1024) {
+        Alert.alert(
+          "Image Too Large",
+          "Please select an image smaller than 10MB."
+        );
+        return;
+      }
+
+      setIsScanning(true);
+
+      const extracted = await scanReceiptImage({
+        uri: asset.uri,
+        base64: asset.base64,
+        mimeType: asset.mimeType || "image/jpeg",
+      });
+
+      setIsScanning(false);
+
+      navigation.navigate("ReviewReceipt", {
+        extractedData: extracted,
+        onRetake: promptReceiptSource,
+      });
+    } catch (err) {
+      setIsScanning(false);
+      Alert.alert(
+        "Receipt Scanning",
+        (err.message || "We couldn't read this receipt clearly.") +
+          "\n\nWould you like to review and enter the receipt details manually?",
+        [
+          {
+            text: "Enter Manually",
+            onPress: () => {
+              navigation.navigate("ReviewReceipt", {
+                extractedData: {
+                  merchant: "",
+                  amount: "",
+                  date: new Date().toISOString().split("T")[0],
+                  category: "Food",
+                  paymentMethod: "upi",
+                  description: "Scanned Receipt",
+                },
+                onRetake: promptReceiptSource,
+              });
+            },
+          },
+          {
+            text: "Cancel",
+            style: "cancel",
+          },
+        ]
+      );
     }
   };
+
 
   const saveToStorage = async (key, newItem) => {
     try {
@@ -124,7 +236,7 @@ const AddTransactionScreen = ({ navigation, route }) => {
   };
 
   const handleSubmit = async () => {
-    if (type === "expense" && isZeroBalance) {
+    if (type === "expense" && isExpenseDisabled) {
       Alert.alert("Insufficient Balance", "You does not have enough money.");
       return;
     }
@@ -203,7 +315,7 @@ const AddTransactionScreen = ({ navigation, route }) => {
         <SegmentedButtons
           value={type}
           onValueChange={(val) => {
-            if (val === "expense" && isZeroBalance) {
+            if (val === "expense" && isExpenseDisabled) {
               Alert.alert("Insufficient Balance", "You does not have enough money.");
               return;
             }
@@ -214,9 +326,9 @@ const AddTransactionScreen = ({ navigation, route }) => {
               value: "expense",
               label: "Expense",
               icon: "arrow-down-circle-outline",
-              disabled: isZeroBalance,
+              disabled: isExpenseDisabled,
               checkedColor: "#FFFFFF",
-              style: isZeroBalance
+              style: isExpenseDisabled
                 ? { opacity: 0.35 }
                 : type === "expense"
                 ? { backgroundColor: semantic.expense }
@@ -234,7 +346,7 @@ const AddTransactionScreen = ({ navigation, route }) => {
         />
 
         {/* Zero Balance Notification Banner */}
-        {isZeroBalance && (
+        {isExpenseDisabled && (
           <View
             style={[
               styles.noticeBanner,
@@ -251,67 +363,96 @@ const AddTransactionScreen = ({ navigation, route }) => {
           </View>
         )}
 
-        {/* Quick Scan Action Cards (Using Vector Icons, No Emoji) */}
-        <View style={styles.scanCardsRow}>
-          <TouchableOpacity
-            style={[
-              styles.scanCard,
-              {
-                backgroundColor: theme.colors.surface,
-                borderColor: theme.colors.outline,
-              },
-            ]}
-            onPress={() => scanReceipt("receipt")}
-            disabled={isScanning}
-            accessibilityRole="button"
-            accessibilityLabel="Scan receipt"
-          >
-            <View style={[styles.scanIconWrapper, { backgroundColor: "#E0E7FF" }]}>
-              <Icon source="camera-outline" size={20} color={brand.emerald} />
+        {/* Dedicated AI Receipt Scanner Card */}
+        <TouchableOpacity
+          style={[
+            styles.scanReceiptCard,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: isExpenseDisabled ? theme.colors.outline : brand.emerald,
+              opacity: isExpenseDisabled ? 0.45 : 1,
+            },
+          ]}
+          onPress={promptReceiptSource}
+          disabled={isScanning || isExpenseDisabled}
+          accessibilityRole="button"
+          accessibilityLabel="Scan receipt with AI"
+        >
+          <View style={[styles.scanIconWrapper, { backgroundColor: "rgba(16, 185, 129, 0.12)" }]}>
+            <AppIcon name="receipt" size={22} color={brand.emerald} />
+          </View>
+          <View style={styles.scanTextWrapper}>
+            <View style={styles.scanTitleRow}>
+              <Text style={[styles.scanCardTitle, { color: theme.colors.onSurface }]}>
+                Scan Physical Receipt
+              </Text>
+              <View style={[styles.aiChip, { backgroundColor: "rgba(99, 102, 241, 0.12)" }]}>
+                <AppIcon name="auto-fix" size={12} color={semantic.ai} />
+                <Text style={[styles.aiChipText, { color: semantic.ai }]}>AI Vision</Text>
+              </View>
             </View>
-            <Text style={[styles.scanCardText, { color: theme.colors.onSurface }]}>
-              Scan Receipt
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.scanCard,
-              {
-                backgroundColor: theme.colors.surface,
-                borderColor: theme.colors.outline,
-              },
-            ]}
-            onPress={() => scanReceipt("screenshot")}
-            disabled={isScanning}
-            accessibilityRole="button"
-            accessibilityLabel="Scan payment screenshot"
-          >
-            <View style={[styles.scanIconWrapper, { backgroundColor: "#FEF3C7" }]}>
-              <Icon source="cellphone-text" size={20} color="#F59E0B" />
-            </View>
-            <Text style={[styles.scanCardText, { color: theme.colors.onSurface }]}>
-              Scan UPI / App
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {isScanning ? (
-          <View
-            style={[
-              styles.scanningContainer,
-              {
-                backgroundColor: theme.colors.surface,
-                borderColor: theme.colors.outline,
-              },
-            ]}
-          >
-            <ActivityIndicator animating={true} size="small" color={brand.emerald} />
-            <Text style={[styles.scanningText, { color: theme.colors.onSurface }]}>
-              Analyzing document...
+            <Text style={[styles.scanCardSubtitle, { color: theme.colors.onSurfaceVariant }]}>
+              Auto-extracts merchant, amount, date & category
             </Text>
           </View>
-        ) : null}
+          <AppIcon name="camera-outline" size={20} color={brand.emerald} />
+        </TouchableOpacity>
+
+        {/* Polished Scanning Modal */}
+        <Modal
+          visible={isScanning}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setIsScanning(false)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View
+              style={[
+                styles.loadingCard,
+                {
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.outline,
+                },
+              ]}
+            >
+              <ActivityIndicator animating={true} size="large" color={brand.emerald} />
+              <Text style={[styles.loadingTitle, { color: theme.colors.onSurface }]}>
+                Analyzing receipt...
+              </Text>
+              <Text style={[styles.loadingSubtitle, { color: theme.colors.onSurfaceVariant }]}>
+                Extracting transaction details with Gemini Vision:
+              </Text>
+
+              <View style={styles.loadingSteps}>
+                <View style={styles.stepItem}>
+                  <AppIcon name="check-circle" size={18} color={brand.emerald} />
+                  <Text style={[styles.stepText, { color: theme.colors.onSurface }]}>Merchant</Text>
+                </View>
+                <View style={styles.stepItem}>
+                  <AppIcon name="check-circle" size={18} color={brand.emerald} />
+                  <Text style={[styles.stepText, { color: theme.colors.onSurface }]}>Amount</Text>
+                </View>
+                <View style={styles.stepItem}>
+                  <AppIcon name="check-circle" size={18} color={brand.emerald} />
+                  <Text style={[styles.stepText, { color: theme.colors.onSurface }]}>Date</Text>
+                </View>
+                <View style={styles.stepItem}>
+                  <AppIcon name="check-circle" size={18} color={brand.emerald} />
+                  <Text style={[styles.stepText, { color: theme.colors.onSurface }]}>Category</Text>
+                </View>
+              </View>
+
+              <Button
+                mode="text"
+                onPress={() => setIsScanning(false)}
+                textColor={semantic.expense}
+                style={styles.cancelScanBtn}
+              >
+                Cancel
+              </Button>
+            </View>
+          </View>
+        </Modal>
 
         {/* Amount Input */}
         <TextInput
@@ -399,46 +540,95 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     flex: 1,
   },
-  scanCardsRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: spacing.lg,
-  },
-  scanCard: {
-    flex: 1,
+  scanReceiptCard: {
     flexDirection: "row",
     alignItems: "center",
     padding: spacing.md,
     borderRadius: 14,
-    borderWidth: 1,
-    marginHorizontal: 4,
+    borderWidth: 1.5,
+    marginBottom: spacing.lg,
   },
   scanIconWrapper: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: "center",
     alignItems: "center",
-    marginRight: spacing.sm,
+    marginRight: spacing.md,
   },
-  scanCardText: {
-    fontSize: 13,
-    fontWeight: "600",
+  scanTextWrapper: {
     flex: 1,
   },
-  scanningContainer: {
+  scanTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    padding: spacing.md,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: spacing.md,
+    marginBottom: 2,
+    gap: 8,
   },
-  scanningText: {
-    marginLeft: spacing.sm,
+  scanCardTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  scanCardSubtitle: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  aiChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    gap: 4,
+  },
+  aiChipText: {
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.75)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: spacing.lg,
+  },
+  loadingCard: {
+    width: "100%",
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: spacing.xl,
+    alignItems: "center",
+  },
+  loadingTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginTop: spacing.md,
+    marginBottom: spacing.xs,
+  },
+  loadingSubtitle: {
+    fontSize: 13,
+    textAlign: "center",
+    marginBottom: spacing.lg,
+  },
+  loadingSteps: {
+    width: "100%",
+    backgroundColor: "rgba(16, 185, 129, 0.06)",
+    borderRadius: 12,
+    padding: spacing.md,
+    gap: 8,
+    marginBottom: spacing.lg,
+  },
+  stepItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  stepText: {
     fontSize: 14,
     fontWeight: "600",
+  },
+  cancelScanBtn: {
+    marginTop: spacing.xs,
   },
   input: {
     marginBottom: spacing.md,

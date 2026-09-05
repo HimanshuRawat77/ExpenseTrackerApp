@@ -94,3 +94,39 @@ exports.getInsights = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * POST /api/ai/receipt
+ * Scan receipt image and return extracted transaction suggestion
+ */
+exports.scanReceipt = async (req, res, next) => {
+  try {
+    let buffer = null;
+    let mimeType = 'image/jpeg';
+    let base64 = null;
+
+    if (req.file) {
+      buffer = req.file.buffer;
+      mimeType = req.file.mimetype || 'image/jpeg';
+    } else if (req.body && req.body.imageBase64) {
+      base64 = req.body.imageBase64;
+      mimeType = req.body.mimeType || 'image/jpeg';
+    }
+
+    if (!buffer && !base64) {
+      return apiResponse.error(res, 400, 'Please upload or provide a valid receipt image.');
+    }
+
+    const extracted = await aiService.extractReceiptData({ buffer, mimeType, base64 });
+
+    return apiResponse.success(res, 200, 'Receipt details extracted successfully', extracted);
+  } catch (error) {
+    console.warn('AI Receipt scan error:', error.message);
+    const userMessage =
+      error.message && !error.message.includes('GoogleGenerativeAI') && !error.message.includes('JSON')
+        ? error.message
+        : "We couldn't read this receipt clearly. Try taking a clearer photo.";
+    return apiResponse.error(res, 422, userMessage);
+  }
+};
+

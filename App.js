@@ -11,6 +11,7 @@ import LoadingScreen from "./screens/LoadingScreen";
 import BottomTabs from "./navigation/BottomTabs";
 import SettingsScreen from "./screens/SettingsScreen";
 import AddTransactionScreen from "./screens/AddTransactionScreen";
+import ReviewReceiptScreen from "./screens/ReviewReceiptScreen";
 import {
   paperLightTheme,
   paperDarkTheme,
@@ -250,6 +251,11 @@ export default function App() {
               <Stack.Screen
                 name="AddTransaction"
                 component={AddTransactionScreen}
+              />
+
+              <Stack.Screen
+                name="ReviewReceipt"
+                component={ReviewReceiptScreen}
               />
 
               <Stack.Screen name="Settings">

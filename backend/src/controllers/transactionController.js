@@ -123,3 +123,92 @@ exports.bulkCreate = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.processSmsTransactions = async (req, res, next) => {
+  try {
+    const rawItems = Array.isArray(req.body.transactions)
+      ? req.body.transactions
+      : (req.body && req.body.amount ? [req.body] : []);
+
+    if (rawItems.length === 0) {
+      return apiResponse.error(res, 400, 'No transactions provided');
+    }
+
+    const created = [];
+    const duplicates = [];
+    const failed = [];
+
+    for (const item of rawItems) {
+      try {
+        if (!item.amount || isNaN(item.amount) || Number(item.amount) <= 0) {
+          failed.push({ item, reason: 'Invalid or missing amount' });
+          continue;
+        }
+
+        // Duplicate checks
+        const duplicateConditions = [];
+        if (item.externalId && typeof item.externalId === 'string' && item.externalId.trim().length > 0) {
+          duplicateConditions.push({ externalId: item.externalId.trim() });
+        }
+        if (item.fingerprint && typeof item.fingerprint === 'string' && item.fingerprint.trim().length > 0) {
+          duplicateConditions.push({ fingerprint: item.fingerprint.trim() });
+        }
+
+        if (duplicateConditions.length > 0) {
+          const existing = await Transaction.findOne({
+            userId: req.userId,
+            $or: duplicateConditions
+          });
+
+          if (existing) {
+            duplicates.push({
+              externalId: item.externalId,
+              fingerprint: item.fingerprint,
+              existingId: existing._id,
+              reason: 'Transaction with matching externalId or fingerprint already exists'
+            });
+            continue;
+          }
+        }
+
+        const newTx = new Transaction({
+          userId: req.userId,
+          type: item.type === 'income' ? 'income' : 'expense',
+          amount: Number(item.amount),
+          currency: item.currency || 'INR',
+          category: item.category || 'Other',
+          merchant: item.merchant ? item.merchant.trim() : null,
+          description: item.description ? item.description.trim() : (item.merchant ? `SMS: ${item.merchant}` : 'SMS Transaction'),
+          date: item.date ? new Date(item.date) : new Date(),
+          paymentMethod: ['cash', 'upi', 'card', 'bank_transfer', 'wallet', 'other'].includes(item.paymentMethod)
+            ? item.paymentMethod
+            : 'other',
+          source: 'sms',
+          externalId: item.externalId ? item.externalId.trim() : null,
+          fingerprint: item.fingerprint ? item.fingerprint.trim() : null,
+          aiCategorized: Boolean(item.aiCategorized)
+        });
+
+        await newTx.save();
+        created.push(newTx);
+      } catch (err) {
+        failed.push({ item, reason: err.message });
+      }
+    }
+
+    return apiResponse.success(res, 201, `Processed ${rawItems.length} SMS transactions: ${created.length} created, ${duplicates.length} duplicates, ${failed.length} failed`, {
+      created,
+      duplicates,
+      failed,
+      summary: {
+        total: rawItems.length,
+        createdCount: created.length,
+        duplicateCount: duplicates.length,
+        failedCount: failed.length
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

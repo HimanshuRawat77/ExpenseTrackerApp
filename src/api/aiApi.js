@@ -146,7 +146,7 @@ export const getAIInsight = async ({ forceRefresh = false, localExpenses = [], l
   try {
     const savedUser = await AsyncStorage.getItem('currentUser');
     const user = savedUser ? JSON.parse(savedUser) : null;
-    const token = user?.accessToken || user?.token;
+    const token = (await AsyncStorage.getItem('authToken')) || user?.accessToken || user?.token;
 
     if (token) {
       const baseUrl = await getWorkingBaseUrl();
@@ -185,3 +185,74 @@ export const getAIInsight = async ({ forceRefresh = false, localExpenses = [], l
   await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(cacheEntry));
   return fallbackInsight;
 };
+
+/**
+ * Scan receipt image via backend Gemini Vision endpoint
+ *
+ * @param {Object} params
+ * @param {string} params.uri - Image local file URI
+ * @param {string} [params.base64] - Base64 encoded image
+ * @param {string} [params.mimeType] - MIME type
+ */
+export const scanReceiptImage = async ({ uri, base64, mimeType = 'image/jpeg' }) => {
+  const savedUser = await AsyncStorage.getItem('currentUser');
+  const user = savedUser ? JSON.parse(savedUser) : null;
+  const token = (await AsyncStorage.getItem('authToken')) || user?.accessToken || user?.token;
+
+  if (!token) {
+    throw new Error('Please log in to scan receipts.');
+  }
+
+  const baseUrl = await getWorkingBaseUrl();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s timeout for AI vision
+
+  try {
+    let response;
+    if (base64) {
+      response = await fetch(`${baseUrl}/api/ai/receipt`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          imageBase64: base64,
+          mimeType: mimeType || 'image/jpeg',
+        }),
+        signal: controller.signal,
+      });
+    } else {
+      const formData = new FormData();
+      formData.append('receipt', {
+        uri,
+        name: 'receipt.jpg',
+        type: mimeType || 'image/jpeg',
+      });
+      response = await fetch(`${baseUrl}/api/ai/receipt`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+        signal: controller.signal,
+      });
+    }
+
+    clearTimeout(timeoutId);
+
+    const json = await response.json();
+    if (response.ok && json.success && json.data) {
+      return json.data;
+    } else {
+      throw new Error(json.message || "We couldn't read this receipt clearly. Try taking a clearer photo.");
+    }
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      throw new Error('Scanning timed out. Please check your internet connection.');
+    }
+    throw err;
+  }
+};
+

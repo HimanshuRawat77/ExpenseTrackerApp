@@ -53,7 +53,17 @@ const transactionSchema = new mongoose.Schema({
   source: {
     type: String,
     default: 'manual',
-    enum: ['manual', 'receipt_scan', 'screenshot_scan', 'recurring', 'imported']
+    enum: ['manual', 'receipt', 'receipt_scan', 'screenshot_scan', 'recurring', 'imported', 'sms']
+  },
+  externalId: {
+    type: String,
+    default: null,
+    trim: true
+  },
+  fingerprint: {
+    type: String,
+    default: null,
+    trim: true
   },
   aiCategorized: {
     type: Boolean,
@@ -74,5 +84,7 @@ transactionSchema.index({ userId: 1, date: -1 });
 transactionSchema.index({ userId: 1, category: 1 });
 transactionSchema.index({ userId: 1, type: 1 });
 transactionSchema.index({ userId: 1, merchant: 1 });
+transactionSchema.index({ userId: 1, externalId: 1 }, { sparse: true });
+transactionSchema.index({ userId: 1, fingerprint: 1 }, { sparse: true });
 
 module.exports = mongoose.model('Transaction', transactionSchema);

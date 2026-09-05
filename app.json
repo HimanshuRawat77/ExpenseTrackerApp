@@ -21,7 +21,11 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.himanshu_rawat77.ExpenseTracker"
+      "package": "com.himanshu_rawat77.ExpenseTracker",
+      "permissions": [
+        "RECEIVE_SMS",
+        "READ_SMS"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
