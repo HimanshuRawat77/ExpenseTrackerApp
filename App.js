@@ -13,7 +13,6 @@ import SettingsScreen from "./screens/SettingsScreen";
 import AddTransactionScreen from "./screens/AddTransactionScreen";
 import ReviewReceiptScreen from "./screens/ReviewReceiptScreen";
 import BalanceOnboardingScreen from "./screens/BalanceOnboardingScreen";
-import FinancialNewsScreen from "./screens/FinancialNewsScreen";
 import {
   paperLightTheme,
   paperDarkTheme,
@@ -292,11 +291,6 @@ export default function App() {
                     />
                   )}
                 </Stack.Screen>
-
-                <Stack.Screen
-                  name="Markets"
-                  component={FinancialNewsScreen}
-                />
 
                 <Stack.Screen
                   name="BalanceOnboarding"
